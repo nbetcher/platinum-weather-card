@@ -3,6 +3,12 @@ name: 'Release'
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to attach assets to (e.g., v1.0.7)'
+        required: true
+        type: string
 
 jobs:
   release:
@@ -30,6 +36,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/*
-          tag: ${{ github.ref }}
+          tag: ${{ inputs.tag || github.ref }}
           overwrite: true
           file_glob: true
