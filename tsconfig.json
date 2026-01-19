@@ -25,7 +25,7 @@
     "useDefineForClassFields": false,
     "declaration": false,
     "declarationMap": false,
-    "sourceMap": true
+    "sourceMap": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

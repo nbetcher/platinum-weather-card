@@ -33,8 +33,7 @@ const plugins = [
   commonjs(),
   typescript({
     tsconfig: './tsconfig.json',
-    sourceMap: true,
-    inlineSources: dev,
+    sourceMap: false,
   }),
   json(),
   babel({
@@ -48,7 +47,19 @@ const plugins = [
   !dev && terser({
     ecma: 2022,
     module: true,
-    warnings: true,
+    compress: {
+      passes: 2,
+      drop_console: true,
+      drop_debugger: true,
+      pure_getters: true,
+      unsafe_methods: true,
+    },
+    mangle: {
+      properties: false,
+    },
+    format: {
+      comments: false,
+    },
   }),
   ignore({
     files: [...ignoreTextfieldFiles, ...ignoreSelectFiles, ...ignoreSwitchFiles].map((file) => require.resolve(file)),
@@ -61,8 +72,6 @@ export default [
     output: {
       dir: 'dist',
       format: 'es',
-      sourcemap: dev,
-      inlineDynamicImports: true,
     },
     plugins: [...plugins],
   },
