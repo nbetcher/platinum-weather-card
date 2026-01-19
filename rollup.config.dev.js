@@ -1,14 +1,15 @@
-import resolve from 'rollup-plugin-node-resolve';
-import typescript from 'rollup-plugin-typescript2';
-import keysTransformer from 'ts-transformer-keys/transformer';
-import babel from 'rollup-plugin-babel';
+import nodeResolve from '@rollup/plugin-node-resolve';
+import typescript from '@rollup/plugin-typescript';
+import babel from '@rollup/plugin-babel';
 import serve from 'rollup-plugin-serve';
-import { terser } from 'rollup-plugin-terser';
 import json from '@rollup/plugin-json';
-import ignore from './rollup-plugins/ignore';
-import { ignoreTextfieldFiles } from './elements/ignore/textfield';
-import { ignoreSelectFiles } from './elements/ignore/select';
-import { ignoreSwitchFiles } from './elements/ignore/switch';
+import ignore from './rollup-plugins/ignore.js';
+import { ignoreTextfieldFiles } from './elements/ignore/textfield.js';
+import { ignoreSelectFiles } from './elements/ignore/select.js';
+import { ignoreSwitchFiles } from './elements/ignore/switch.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 export default {
   input: ['src/platinum-weather-card.ts'],
@@ -16,22 +17,30 @@ export default {
     dir: './dist',
     format: 'es',
     inlineDynamicImports: true,
+    sourcemap: true,
   },
   watch: {
     include: './src/**',
     clearScreen: false,
   },
   plugins: [
-    resolve(),
-    typescript({ transformers: [service => ({
-      before: [ keysTransformer(service.getProgram()) ],
-      after: []
-    })] }),
+    nodeResolve({
+      browser: true,
+      preferBuiltins: false,
+    }),
+    typescript({
+      tsconfig: './tsconfig.json',
+      sourceMap: true,
+      inlineSources: true,
+    }),
     json(),
     babel({
       exclude: 'node_modules/**',
+      babelHelpers: 'bundled',
+      presets: [
+        ['@babel/preset-env', { targets: { esmodules: true } }]
+      ],
     }),
-//    terser(),
     serve({
       contentBase: './dist',
       host: '0.0.0.0',

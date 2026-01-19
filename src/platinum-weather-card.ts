@@ -1,7 +1,7 @@
 /* eslint-disable no-var */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { LitElement, html, TemplateResult, css, PropertyValues, CSSResult, unsafeCSS } from 'lit';
-import { customElement, property, state } from 'lit/decorators';
+import { customElement, property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceCardEditor, getLovelace, debounce, hasAction, ActionHandlerEvent, handleAction } from 'custom-card-helpers';
 import ResizeObserver from 'resize-observer-polyfill';
 import { getLocale } from './helpers';
@@ -2184,7 +2184,7 @@ export class PlatinumWeatherCard extends LitElement {
 
   private _showConfigWarning(warnings: string[]): TemplateResult {
     // const errorCard = <LovelaceCard>document.createElement('hui-error-card');
-    // eslint-disable-next-line no-console
+     
     return html`
       <hui-warning>
         <div>Weather Card</div>

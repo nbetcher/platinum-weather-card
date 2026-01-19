@@ -1,15 +1,17 @@
-import typescript from 'rollup-plugin-typescript2';
-import keysTransformer from 'ts-transformer-keys/transformer';
-import commonjs from 'rollup-plugin-commonjs';
-import nodeResolve from 'rollup-plugin-node-resolve';
-import babel from 'rollup-plugin-babel';
-import { terser } from 'rollup-plugin-terser';
+import typescript from '@rollup/plugin-typescript';
+import commonjs from '@rollup/plugin-commonjs';
+import nodeResolve from '@rollup/plugin-node-resolve';
+import babel from '@rollup/plugin-babel';
+import terser from '@rollup/plugin-terser';
 import serve from 'rollup-plugin-serve';
 import json from '@rollup/plugin-json';
-import ignore from './rollup-plugins/ignore';
-import { ignoreTextfieldFiles } from './elements/ignore/textfield';
-import { ignoreSelectFiles } from './elements/ignore/select';
-import { ignoreSwitchFiles } from './elements/ignore/switch';
+import ignore from './rollup-plugins/ignore.js';
+import { ignoreTextfieldFiles } from './elements/ignore/textfield.js';
+import { ignoreSelectFiles } from './elements/ignore/select.js';
+import { ignoreSwitchFiles } from './elements/ignore/switch.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 const dev = process.env.ROLLUP_WATCH;
 
@@ -24,18 +26,30 @@ const serveopts = {
 };
 
 const plugins = [
-  nodeResolve({}),
+  nodeResolve({
+    browser: true,
+    preferBuiltins: false,
+  }),
   commonjs(),
-  typescript({ transformers: [service => ({
-    before: [ keysTransformer(service.getProgram()) ],
-    after: []
-  })] }),
+  typescript({
+    tsconfig: './tsconfig.json',
+    sourceMap: true,
+    inlineSources: dev,
+  }),
   json(),
   babel({
     exclude: 'node_modules/**',
+    babelHelpers: 'bundled',
+    presets: [
+      ['@babel/preset-env', { targets: { esmodules: true } }]
+    ],
   }),
   dev && serve(serveopts),
-  !dev && terser(),
+  !dev && terser({
+    ecma: 2022,
+    module: true,
+    warnings: true,
+  }),
   ignore({
     files: [...ignoreTextfieldFiles, ...ignoreSelectFiles, ...ignoreSwitchFiles].map((file) => require.resolve(file)),
   }),
@@ -47,6 +61,8 @@ export default [
     output: {
       dir: 'dist',
       format: 'es',
+      sourcemap: dev,
+      inlineDynamicImports: true,
     },
     plugins: [...plugins],
   },

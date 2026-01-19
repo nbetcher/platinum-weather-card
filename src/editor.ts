@@ -1,14 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { LitElement, html, TemplateResult, css, CSSResultGroup } from 'lit';
 import { HomeAssistant, fireEvent, LovelaceCardEditor } from 'custom-card-helpers';
-
-import { keys } from 'ts-transformer-keys';
 
 import { mdiPencil, mdiArrowDown, mdiArrowUp, mdiApplicationEditOutline } from '@mdi/js';
 
 //import { ScopedRegistryHost } from '@lit-labs/scoped-registry-mixin';
-import { WeatherCardConfig, layoutOverview, layoutOrientation, layoutDays, extendedDays, sectionType, timeFormat, sectionNames, pressureDecimals, HassCustomElement } from './types';
-import { customElement, property, state } from 'lit/decorators';
+import { WeatherCardConfig, layoutOverview, layoutOrientation, layoutDays, extendedDays, sectionType, timeFormat, sectionNames, pressureDecimals, HassCustomElement, weatherCardConfigKeys } from './types';
+import { customElement, property, state } from 'lit/decorators.js';
 import { formfieldDefinition } from '../elements/formfield';
 import { selectDefinition } from '../elements/select';
 import { switchDefinition } from '../elements/switch';
@@ -180,7 +178,7 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     }
 
     // Remove unused entries
-    const keysOfProps = keys<WeatherCardConfig>();
+    const keysOfProps = weatherCardConfigKeys;
     for (const element in this._config) {
       if (!keysOfProps.includes(element)) {
         delete tmpConfig[element];
