@@ -2239,10 +2239,13 @@ export class PlatinumWeatherCard extends LitElement {
         font-weight: 300;
         color: var(--primary-text-color);
       }
-      .overview-top {
+      .overview-top{
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start;  /* Removes large gap underneath section on certain layouts. */
         flex-wrap: nowrap;
+      }
+      .overview-top > :last-child{
+        margin-left: auto; /* pushes the temp block to the far right *
       }
       .stacked {
         position: absolute;
@@ -2605,3 +2608,4 @@ export class PlatinumWeatherCard extends LitElement {
     `;
   }
 }
+
