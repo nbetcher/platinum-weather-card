@@ -2,7 +2,8 @@
  
 import { LitElement, html, TemplateResult, css, PropertyValues, CSSResult, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { HomeAssistant, LovelaceCardEditor, getLovelace, debounce, hasAction, ActionHandlerEvent, handleAction } from 'custom-card-helpers';
+import { HomeAssistant, LovelaceCardEditor, ActionHandlerEvent } from './ha-types.js';
+import { getLovelace, debounce, hasAction, handleAction } from './ha-helpers.js';
 import { getLocale } from './helpers';
 import { entityComputeStateDisplay, stringComputeStateDisplay } from './compute_state_display';
 import type { timeFormat, WeatherCardConfig } from './types';
@@ -79,7 +80,7 @@ export class PlatinumWeatherCard extends LitElement {
     }
 
     if (config.test_gui) {
-      getLovelace().setEditMode(true);
+      getLovelace()?.setEditMode(true);
     }
 
     this._config = {
@@ -181,7 +182,6 @@ export class PlatinumWeatherCard extends LitElement {
         }
       }
     });
-    const days = this._config.daily_forecast_days || 5;
     for (const entityName of ['entity_forecast_icon_1', 'entity_summary_1', 'entity_forecast_min_1', 'entity_forecast_max_1', 'entity_pop_1', 'entity_pos_1']) {
       if (this._config[entityName] !== undefined) {
         const entity = this.hass.states[this._config[entityName]];
@@ -882,6 +882,11 @@ export class PlatinumWeatherCard extends LitElement {
   }
 
   protected render(): TemplateResult | void {
+    // Guard for Lit 3 lifecycle - render may be called before hass is set
+    if (!this.hass || !this._config) {
+      return html``;
+    }
+
     const htmlCode: TemplateResult[] = [];
     if (this._checkForErrors()) htmlCode.push(this._showConfigWarning(this._error));
 
@@ -2003,7 +2008,7 @@ export class PlatinumWeatherCard extends LitElement {
     try {
       Intl.NumberFormat(this._config.option_locale);
       return this._config.option_locale;
-    } catch (e) {
+    } catch {
       return undefined;
     }
   }
@@ -2190,21 +2195,6 @@ export class PlatinumWeatherCard extends LitElement {
         ${warnings.map(warning => html`<div>${warning}</div>`)}
       </hui-warning>
     `;
-  }
-
-  private _showWarning(warning: string): TemplateResult {
-    return html`<hui-warning>${warning}</hui-warning>`;
-  }
-
-  private _showError(error: string): TemplateResult {
-    const errorCard = document.createElement('hui-error-card');
-    errorCard.setConfig({
-      type: 'error',
-      error,
-      origConfig: this._config,
-    });
-
-    return html`${errorCard}`;
   }
 
   // https://lit.dev/docs/components/styles/

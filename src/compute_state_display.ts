@@ -1,5 +1,6 @@
 import { HassEntity } from 'home-assistant-js-websocket';
-import { LocalizeFunc, formatDate, formatTime, formatDateTime, FrontendLocaleData } from 'custom-card-helpers';
+import { LocalizeFunc, FrontendLocaleData } from './ha-types.js';
+import { formatDate, formatTime, formatDateTime } from './ha-helpers.js';
 
 const UNAVAILABLE = 'unavailable';
 const UNKNOWN = 'unknown';

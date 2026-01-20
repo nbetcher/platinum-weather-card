@@ -1,4 +1,4 @@
-import { FrontendLocaleData, HomeAssistant, NumberFormat } from 'custom-card-helpers';
+import { FrontendLocaleData, HomeAssistant, NumberFormat } from './ha-types.js';
 
 export const getLocale = (hass: HomeAssistant): FrontendLocaleData =>
     hass.locale || {
