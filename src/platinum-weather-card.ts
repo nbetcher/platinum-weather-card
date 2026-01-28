@@ -2249,8 +2249,11 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .overview-top {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start;
         flex-wrap: nowrap;
+      }
+      .overview-top > .currentTemps {
+        margin-left: auto;
       }
       .stacked {
         position: absolute;
