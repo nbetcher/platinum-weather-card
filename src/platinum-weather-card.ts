@@ -889,9 +889,21 @@ export class PlatinumWeatherCard extends LitElement {
   }
 
   protected render(): TemplateResult | void {
-    // Guard for Lit 3 lifecycle - render may be called before hass is set
-    if (!this.hass || !this._config) {
+    // Guard for Lit 3 lifecycle - render may be called before config/hass are set
+    if (!this._config) {
       return html``;
+    }
+
+    // hass is required for most render paths; render a minimal shell until it arrives
+    if (!this.hass) {
+      return html`
+        <style>
+          ${this.styles}
+        </style>
+        <ha-card class="card">
+          <div class="content"></div>
+        </ha-card>
+      `;
     }
 
     const htmlCode: TemplateResult[] = [];
@@ -1071,16 +1083,16 @@ export class PlatinumWeatherCard extends LitElement {
     const pop = this._config.entity_pop && this.hass.states[this._config.entity_pop] !== undefined
       ? this._config.entity_pop.match('^weather.') === null
         ? Math.round(Number(this.hass.states[this._config.entity_pop].state))
-        : this.hass.states[this._config.entity_pop].attributes.forecast?.[0]?.precipitation_probability !== undefined
-          ? Math.round(Number(this.hass.states[this._config.entity_pop].attributes.forecast?.[0]?.precipitation_probability))
+        : this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability !== undefined
+          ? Math.round(Number(this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability))
           : '---'
       : "---";
     const pop_units = pop !== "---" ? html`<div class="slot-text unit">%</div>` : html``;
     const pos = this._config.entity_pos && this.hass.states[this._config.entity_pos] !== undefined
       ? this._config.entity_pos.match('^weather.') === null
         ? this.hass.states[this._config.entity_pos].state
-        : this.hass.states[this._config.entity_pos].attributes.forecast?.[0]?.precipitation !== undefined
-          ? this.hass.states[this._config.entity_pos].attributes.forecast?.[0]?.precipitation
+        : this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation !== undefined
+          ? this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation
           : '---'
       : "---";
     const pos_units = pos !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
@@ -1101,8 +1113,8 @@ export class PlatinumWeatherCard extends LitElement {
     const pop = this._config.entity_pop && this.hass.states[this._config.entity_pop] !== undefined
       ? this._config.entity_pop.match('^weather.') === null
         ? Math.round(Number(this.hass.states[this._config.entity_pop].state))
-        : this.hass.states[this._config.entity_pop].attributes.forecast?.[0]?.precipitation_probability !== undefined
-          ? Math.round(Number(this.hass.states[this._config.entity_pop].attributes.forecast?.[0]?.precipitation_probability))
+        : this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability !== undefined
+          ? Math.round(Number(this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability))
           : '---'
       : "---";
     const pop_units = pop !== "---" ? html`<div class="slot-text unit">%</div>` : html``;
@@ -1122,8 +1134,8 @@ export class PlatinumWeatherCard extends LitElement {
     const pos = this._config.entity_pos && this.hass.states[this._config.entity_pos] !== undefined
       ? this._config.entity_pos.match('^weather.') === null
         ? this.hass.states[this._config.entity_pos].state
-        : this.hass.states[this._config.entity_pos].attributes.forecast?.[0]?.precipitation !== undefined
-          ? this.hass.states[this._config.entity_pos].attributes.forecast?.[0]?.precipitation
+        : this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation !== undefined
+          ? this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation
           : '---'
       : "---";
     const units = pos !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
@@ -1142,8 +1154,8 @@ export class PlatinumWeatherCard extends LitElement {
     const pos = this._config.entity_possible_tomorrow && this.hass.states[this._config.entity_possible_tomorrow] !== undefined
       ? this._config.entity_possible_tomorrow.match('^weather.') === null
         ? this.hass.states[this._config.entity_possible_tomorrow].state
-        : this.hass.states[this._config.entity_possible_tomorrow].attributes.forecast?.[1]?.precipitation !== undefined
-          ? this.hass.states[this._config.entity_possible_tomorrow].attributes.forecast?.[1]?.precipitation
+        : this.hass.states[this._config.entity_possible_tomorrow].attributes?.forecast?.[1]?.precipitation !== undefined
+          ? this.hass.states[this._config.entity_possible_tomorrow].attributes?.forecast?.[1]?.precipitation
           : '---'
       : "---";
     const units = pos !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
@@ -1241,8 +1253,8 @@ export class PlatinumWeatherCard extends LitElement {
     const temp = this._config.entity_forecast_max && this.hass.states[this._config.entity_forecast_max] !== undefined
       ? this._config.entity_forecast_max.match('^weather.') === null
         ? (Number(this.hass.states[this._config.entity_forecast_max].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-        : this.hass.states[this._config.entity_forecast_max].attributes.forecast?.[0]?.temperature !== undefined
-          ? (Number(this.hass.states[this._config.entity_forecast_max].attributes.forecast?.[0]?.temperature)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+        : this.hass.states[this._config.entity_forecast_max].attributes?.forecast?.[0]?.temperature !== undefined
+          ? (Number(this.hass.states[this._config.entity_forecast_max].attributes?.forecast?.[0]?.temperature)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
           : '---'
       : "---";
     const units = temp !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
@@ -1264,8 +1276,8 @@ export class PlatinumWeatherCard extends LitElement {
     const temp = this._config.entity_forecast_min && this.hass.states[this._config.entity_forecast_min] !== undefined
       ? this._config.entity_forecast_min.match('^weather.') === null
         ? (Number(this.hass.states[this._config.entity_forecast_min].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-        : this.hass.states[this._config.entity_forecast_min].attributes.forecast?.[0]?.templow !== undefined
-          ? (Number(this.hass.states[this._config.entity_forecast_min].attributes.forecast?.[0]?.templow)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+        : this.hass.states[this._config.entity_forecast_min].attributes?.forecast?.[0]?.templow !== undefined
+          ? (Number(this.hass.states[this._config.entity_forecast_min].attributes?.forecast?.[0]?.templow)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
           : '---'
       : "---";
     const units = temp !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
@@ -2235,13 +2247,10 @@ export class PlatinumWeatherCard extends LitElement {
         font-weight: 300;
         color: var(--primary-text-color);
       }
-      .overview-top{
+      .overview-top {
         display: flex;
-        justify-content: flex-start;  /* Removes large gap underneath section on certain layouts. */
+        justify-content: space-between;
         flex-wrap: nowrap;
-      }
-      .overview-top > :last-child{
-        margin-left: auto; /* pushes the temp block to the far right *
       }
       .stacked {
         position: absolute;

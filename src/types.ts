@@ -80,6 +80,7 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   entity_fire_danger?: string;
   entity_pop?: string;
   entity_pos?: string;
+  entity_possible_tomorrow?: string;
   entity_sun?: string;
   entity_uv_alert_summary?: string;
   entity_rainfall?: string;
@@ -118,6 +119,16 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   option_today_rainfall_decimals?: boolean;
   option_pressure_decimals?: pressureDecimals;
   option_color_fire_danger?: boolean;
+  option_daily_color_fire_danger?: boolean;
+
+  // Display formatting options (used directly by the card rendering/CSS)
+  pressure_units?: string;
+  tempformat?: string;
+  use_old_column_format?: boolean;
+  temp_font_weight?: string;
+  temp_font_size?: string;
+  forecast_text_font_size?: string;
+  forecast_text_alignment?: string;
 
   option_locale?: string;
   option_static_icons?: boolean;
@@ -192,6 +203,7 @@ export const weatherCardConfigKeys: (keyof WeatherCardConfig)[] = [
   'entity_fire_danger',
   'entity_pop',
   'entity_pos',
+  'entity_possible_tomorrow',
   'entity_sun',
   'entity_uv_alert_summary',
   'entity_rainfall',
@@ -226,6 +238,14 @@ export const weatherCardConfigKeys: (keyof WeatherCardConfig)[] = [
   'option_today_rainfall_decimals',
   'option_pressure_decimals',
   'option_color_fire_danger',
+  'option_daily_color_fire_danger',
+  'pressure_units',
+  'tempformat',
+  'use_old_column_format',
+  'temp_font_weight',
+  'temp_font_size',
+  'forecast_text_font_size',
+  'forecast_text_alignment',
   'option_locale',
   'option_static_icons',
   'option_time_format',
