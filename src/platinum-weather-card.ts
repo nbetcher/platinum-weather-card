@@ -2261,7 +2261,7 @@ export class PlatinumWeatherCard extends LitElement {
       .top-left {
         display: flex;
         flex-direction: column;
-        height: 120px;
+        height: 85px;
       }
       .top-left-obs {
         display: flex;
