@@ -55,10 +55,15 @@ export const entityComputeStateDisplay = (
     }
 
     return (
-        // Return device class translation
+        // Return modern (2023.4+) device class translation
+        (stateObj.attributes.device_class &&
+            localize(`component.${domain}.entity_component.${stateObj.attributes.device_class}.state.${stateObj.state}`)) ||
+        // Return modern (2023.4+) default translation
+        localize(`component.${domain}.entity_component._.state.${stateObj.state}`) ||
+        // Return legacy device class translation
         (stateObj.attributes.device_class &&
             localize(`component.${domain}.state.${stateObj.attributes.device_class}.${stateObj.state}`)) ||
-        // Return default translation
+        // Return legacy default translation
         localize(`component.${domain}.state._.${stateObj.state}`) ||
         // We don't know! Return the raw state.
         stateObj.state
@@ -71,7 +76,9 @@ export const stringComputeStateDisplay = (
 ): string | undefined => {
 
     return (
-        // Return default translation
+        // Return modern (2023.4+) default translation
+        localize(`component.weather.entity_component._.state.${stringObj}`) ||
+        // Return legacy default translation
         localize(`component.weather.state._.${stringObj}`) ||
         // We don't know! Return the raw state.
         stringObj

@@ -81,6 +81,7 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   entity_pop?: string;
   entity_pos?: string;
   entity_possible_tomorrow?: string;
+  forecast_type?: 'daily' | 'twice_daily' | 'hourly';
   entity_sun?: string;
   entity_uv_alert_summary?: string;
   entity_rainfall?: string;
@@ -252,8 +253,10 @@ export const weatherCardConfigKeys: (keyof WeatherCardConfig)[] = [
   'option_tooltips',
   'old_daily_format',
   'option_show_beaufort',
+  'forecast_type',
   'entity',
   'tap_action',
   'hold_action',
   'style',
+  'card_mod',
 ];

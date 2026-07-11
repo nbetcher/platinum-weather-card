@@ -76,6 +76,10 @@ export interface HomeAssistant {
   };
   connection: {
     haVersion: string;
+    subscribeMessage<Result>(
+      callback: (result: Result) => void,
+      subscribeMessage: { type: string; [key: string]: unknown },
+    ): Promise<() => Promise<void>>;
   };
   connected: boolean;
   states: HassEntities;

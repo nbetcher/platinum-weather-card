@@ -49,6 +49,99 @@ export class PlatinumWeatherCard extends LitElement {
 
   private _error: string[] = [];
 
+  // Modern HA (2023.9+) no longer exposes a 'forecast' attribute on weather
+  // entities - forecast data must be retrieved via the weather/subscribe_forecast
+  // websocket API. Subscribed forecasts are stored here keyed by entity id.
+  @state() private _forecasts: Record<string, any[]> = {};
+
+  private _forecastSubs: Map<string, Promise<() => void>> = new Map();
+
+  private _forecastSubSignature = '';
+
+  // Config keys that may reference a weather domain entity whose forecast data is consumed
+  private static readonly forecastConfigKeys = [
+    'entity_forecast_icon_1', 'entity_summary_1', 'entity_forecast_min_1', 'entity_forecast_max_1',
+    'entity_pop_1', 'entity_pos_1', 'entity_pop', 'entity_pos', 'entity_possible_tomorrow',
+    'entity_forecast_max', 'entity_forecast_min',
+  ];
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    this._checkForecastSubscriptions();
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._unsubscribeForecasts();
+  }
+
+  protected updated(changedProps: PropertyValues): void {
+    super.updated(changedProps);
+    if (changedProps.has('hass') || changedProps.has('_config')) {
+      this._checkForecastSubscriptions();
+    }
+  }
+
+  private _forecastEntities(): string[] {
+    if (!this._config) {
+      return [];
+    }
+    const entities = new Set<string>();
+    for (const key of PlatinumWeatherCard.forecastConfigKeys) {
+      const value = this._config[key];
+      if (typeof value === 'string' && value.match('^weather.') !== null) {
+        entities.add(value);
+      }
+    }
+    return [...entities].sort();
+  }
+
+  private _checkForecastSubscriptions(): void {
+    if (!this.hass || !this._config || !this.isConnected) {
+      return;
+    }
+    const entities = this._forecastEntities();
+    const signature = entities.join('|');
+    if (signature === this._forecastSubSignature) {
+      return;
+    }
+    this._unsubscribeForecasts();
+    this._forecastSubSignature = signature;
+    for (const entityId of entities) {
+      const sub = this.hass.connection.subscribeMessage<{ forecast: any[] }>(
+        (event) => {
+          this._forecasts = { ...this._forecasts, [entityId]: event.forecast ?? [] };
+        },
+        { type: 'weather/subscribe_forecast', entity_id: entityId, forecast_type: this._config.forecast_type ?? 'daily' },
+      // Older HA versions do not support the subscription API - fall back to attribute reads
+      ).catch(() => (() => undefined));
+      this._forecastSubs.set(entityId, sub);
+    }
+  }
+
+  private _unsubscribeForecasts(): void {
+    this._forecastSubs.forEach((sub) => {
+      sub.then((unsub) => {
+        try {
+          unsub();
+        } catch {
+          // Connection may already be closed
+        }
+      });
+    });
+    this._forecastSubs.clear();
+    this._forecastSubSignature = '';
+  }
+
+  // Returns forecast data for a weather entity - subscribed data when available,
+  // otherwise the legacy 'forecast' attribute (pre 2023.9 HA)
+  private _weatherForecast(entityId: string | undefined): any[] | undefined {
+    if (!entityId) {
+      return undefined;
+    }
+    return this._forecasts[entityId] ?? this.hass.states[entityId]?.attributes?.forecast;
+  }
+
   public getCardSize(): number {
     // Guard for early calls before config is set
     if (!this._config) {
@@ -188,37 +281,31 @@ export class PlatinumWeatherCard extends LitElement {
     });
     for (const entityName of ['entity_forecast_icon_1', 'entity_summary_1', 'entity_forecast_min_1', 'entity_forecast_max_1', 'entity_pop_1', 'entity_pos_1']) {
       if (this._config[entityName] !== undefined) {
-        const entity = this.hass.states[this._config[entityName]];
         // check if we have a weather domain as the entity
         if (this._config[entityName].match('^weather.')) {
           // we are dealing with the weather domain
-          // check that attributes exist for the first day
+          // check that forecast data exists for the first day - skip the checks while
+          // subscribed forecast data has not arrived yet (or the subscription failed)
+          const forecast = this._weatherForecast(this._config[entityName]);
+          if (forecast === undefined) {
+            continue;
+          }
           const forecastDate = new Date();
           forecastDate.setDate(forecastDate.getDate() + 1);
           switch (entityName) {
             case 'entity_forecast_icon_1':
-              if (this._getForecastPropFromWeather(entity?.attributes?.forecast, forecastDate, 'condition') === undefined) {
+              if (this._getForecastPropFromWeather(forecast, forecastDate, 'condition') === undefined) {
                 this._error.push(`'${entityName} attribute forecast[1].condition not found`);
               }
               break
             case 'entity_forecast_min_1':
-              if (this._getForecastPropFromWeather(entity?.attributes?.forecast, forecastDate, 'templow') === undefined) {
+              if (this._getForecastPropFromWeather(forecast, forecastDate, 'templow') === undefined) {
                 this._error.push(`'${entityName} attribute forecast[1].templow not found`);
               }
               break
             case 'entity_forecast_max_1':
-              if (this._getForecastPropFromWeather(entity?.attributes?.forecast, forecastDate, 'temperature') === undefined) {
+              if (this._getForecastPropFromWeather(forecast, forecastDate, 'temperature') === undefined) {
                 this._error.push(`'${entityName} attribute forecast[1].temperature not found`);
-              }
-              break;
-            case 'entity_pop_1':
-              if (this._getForecastPropFromWeather(entity?.attributes?.forecast, forecastDate, 'precipitation_probability') === undefined) {
-                this._error.push(`'${entityName} attribute forecast[1].precipitation_probability not found`);
-              }
-              break;
-            case 'entity_pos_1':
-              if (this._getForecastPropFromWeather(entity?.attributes?.forecast, forecastDate, 'precipitation') === undefined) {
-                this._error.push(`'${entityName} attribute forecast[1].precipitation not found`);
               }
               break;
           }
@@ -261,7 +348,13 @@ export class PlatinumWeatherCard extends LitElement {
           }
         }
       } else {
-        const d = new Date(this.hass.states[this._config.entity_update_time].state);
+        const updateTimeObj = this.hass.states[this._config.entity_update_time];
+        // If the state itself is not a parsable timestamp (e.g. a weather entity),
+        // fall back to the time the entity was last updated
+        var d = new Date(updateTimeObj.state);
+        if (isNaN(d.getTime())) {
+          d = new Date(updateTimeObj.last_updated);
+        }
         switch (this.timeFormat) {
           case '12hour':
             return html`${d.toLocaleString(this.locale || navigator.language, { hour: 'numeric', minute: '2-digit', hour12: true }).replace(" ", "") + ", " + d.toLocaleDateString(this.locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(",", "")}`;
@@ -458,7 +551,12 @@ export class PlatinumWeatherCard extends LitElement {
           if (attribute !== undefined) extended.push(html`${attribute}`);
         }
       } else {
-        if (this.hass.states[extendedEntity] !== undefined) extended.push(html`${this.hass.states[extendedEntity].state}`);
+        if (this.hass.states[extendedEntity] !== undefined) {
+          // Capitalise the first letter so lowercase source text (eg. OpenWeatherMap
+          // condition descriptions) reads as a sentence
+          const extendedText = this.hass.states[extendedEntity].state;
+          extended.push(html`${extendedText.charAt(0).toUpperCase() + extendedText.slice(1)}`);
+        }
       }
     }
     extended.push(html`${this._config.entity_todays_uv_forecast && this.hass.states[this._config.entity_todays_uv_forecast] &&
@@ -553,7 +651,7 @@ export class PlatinumWeatherCard extends LitElement {
       if (this._config.entity_forecast_icon_1?.match('^weather.')) {
         // using a weather domain entity
         const iconEntity = this._config.entity_forecast_icon_1;
-        const condition = this._getForecastPropFromWeather(this.hass.states[iconEntity]?.attributes?.forecast, forecastDate, 'condition');
+        const condition = this._getForecastPropFromWeather(this._weatherForecast(iconEntity), forecastDate, 'condition');
         if (condition === undefined) {
           break;
         }
@@ -571,13 +669,13 @@ export class PlatinumWeatherCard extends LitElement {
         htmlIcon = html`<i class="icon" style="background: none, url(${url.href}) no-repeat; background-size: contain;"></i>`;
       }
       if (this._config.entity_forecast_max_1?.match('^weather.')) {
-        maxTemp = this._getForecastPropFromWeather(this.hass.states[this._config.entity_forecast_max_1]?.attributes?.forecast, forecastDate, 'temperature');
+        maxTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_max_1), forecastDate, 'temperature');
       } else {
         start = this._config.entity_forecast_max_1 ? this._config.entity_forecast_max_1.match(/(\d+)(?!.*\d)/g) : false;
         maxTemp = start && this._config.entity_forecast_max_1 ? this.hass.states[this._config.entity_forecast_max_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
       }
       if (this._config.entity_forecast_min_1?.match('^weather.')) {
-        minTemp = this._getForecastPropFromWeather(this.hass.states[this._config.entity_forecast_min_1]?.attributes?.forecast, forecastDate, 'templow');
+        minTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_min_1), forecastDate, 'templow');
       } else {
         start = this._config.entity_forecast_min_1 ? this._config.entity_forecast_min_1.match(/(\d+)(?!.*\d)/g) : false;
         minTemp = start && this._config.entity_forecast_min_1 ? this.hass.states[this._config.entity_forecast_min_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
@@ -627,7 +725,7 @@ export class PlatinumWeatherCard extends LitElement {
       var tooltip: TemplateResult;
       if (this._config.entity_pop_1?.match('^weather.')) {
         const popEntity = this._config.entity_pop_1;
-        const popData = this._getForecastPropFromWeather(this.hass.states[popEntity]?.attributes?.forecast, forecastDate, 'precipitation_probability');
+        const popData = this._getForecastPropFromWeather(this._weatherForecast(popEntity), forecastDate, 'precipitation_probability');
         pop = popEntity ? html`<li class="f-slot-horiz-text"><span><div class="slot-text pop">${this.hass.states[popEntity] && popData !== undefined ? Math.round(Number(popData)) : "---"}</div><div class="unit">%</div></span></li>` : html``;
       } else {
         start = this._config.entity_pop_1 ? this._config.entity_pop_1.match(/(\d+)(?!.*\d)/g) : false;
@@ -636,7 +734,7 @@ export class PlatinumWeatherCard extends LitElement {
       }
       if (this._config.entity_pos_1?.match('^weather.')) {
         const posEntity = this._config.entity_pos_1;
-        const posData = this._getForecastPropFromWeather(this.hass.states[posEntity]?.attributes?.forecast, forecastDate, 'precipitation');
+        const posData = this._getForecastPropFromWeather(this._weatherForecast(posEntity), forecastDate, 'precipitation');
         pos = posEntity ? html`<li class="f-slot-horiz-text"><span><div class="pos">${this.hass.states[posEntity] && posData !== undefined ? posData : "---"}</div><div class="unit">${this.getUOM('precipitation')}</div></span></li>` : html``;
       } else {
         start = this._config.entity_pos_1 ? this._config.entity_pos_1.match(/(\d+)(?!.*\d)/g) : false;
@@ -645,7 +743,7 @@ export class PlatinumWeatherCard extends LitElement {
       }
       if (this._config.entity_summary_1?.match('^weather.')) {
         const tooltipEntity = this._config.entity_summary_1;
-        const tooltipData = this._getForecastPropFromWeather(this.hass.states[tooltipEntity]?.attributes?.forecast, forecastDate, 'detailed_description') ?? this._getForecastPropFromWeather(this.hass.states[tooltipEntity]?.attributes?.forecast, forecastDate, 'condition');
+        const tooltipData = this._getForecastPropFromWeather(this._weatherForecast(tooltipEntity), forecastDate, 'detailed_description') ?? this._getForecastPropFromWeather(this._weatherForecast(tooltipEntity), forecastDate, 'condition');
         tooltip = html`<div class="fcasttooltipblock" id="fcast-summary-${i}" style="width:${days * 100}%;left:-${i * 100}%;"><div class="fcasttooltiptext">${this.hass.states[tooltipEntity] && tooltipData !== undefined ? stringComputeStateDisplay(this.hass.localize, tooltipData) : "---"}</div>
             <span style="content:'';position:absolute;top:100%;left:${(100 / days / 2) + i * (100 / days)}%;margin-left:-7.5px;border-width:7.5px;border-style:solid;border-color:#FFA100 transparent transparent transparent;"></span>
           </div>`;
@@ -693,7 +791,7 @@ export class PlatinumWeatherCard extends LitElement {
       if (this._config.entity_forecast_icon_1?.match('^weather.')) {
         // using a weather domain entity
         const iconEntity = this._config.entity_forecast_icon_1;
-        const condition = this._getForecastPropFromWeather(this.hass.states[iconEntity]?.attributes?.forecast, forecastDate, 'condition');
+        const condition = this._getForecastPropFromWeather(this._weatherForecast(iconEntity), forecastDate, 'condition');
         if (condition === undefined) {
           break;
         }
@@ -717,13 +815,13 @@ export class PlatinumWeatherCard extends LitElement {
         <div class="f-summary-vert">${summaryEntity && this.hass.states[summaryEntity] ? this.hass.states[summaryEntity].state : "---"}</div>` : ``;
 
       if (this._config.entity_forecast_max_1?.match('^weather.')) {
-        maxTemp = this._getForecastPropFromWeather(this.hass.states[this._config.entity_forecast_max_1]?.attributes?.forecast, forecastDate, 'temperature');
+        maxTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_max_1), forecastDate, 'temperature');
       } else {
         start = this._config.entity_forecast_max_1 ? this._config.entity_forecast_max_1.match(/(\d+)(?!.*\d)/g) : false;
         maxTemp = start && this._config.entity_forecast_max_1 ? this.hass.states[this._config.entity_forecast_max_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
       }
       if (this._config.entity_forecast_min_1?.match('^weather.')) {
-        minTemp = this._getForecastPropFromWeather(this.hass.states[this._config.entity_forecast_min_1]?.attributes?.forecast, forecastDate, 'templow');
+        minTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_min_1), forecastDate, 'templow');
       } else {
         start = this._config.entity_forecast_min_1 ? this._config.entity_forecast_min_1.match(/(\d+)(?!.*\d)/g) : false;
         minTemp = start && this._config.entity_forecast_min_1 ? this.hass.states[this._config.entity_forecast_min_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
@@ -741,7 +839,7 @@ export class PlatinumWeatherCard extends LitElement {
         </div>` : html`---`;
       if (this._config.entity_pop_1?.match('^weather.')) {
         const popEntity = this._config.entity_pop_1;
-        const popData = this._getForecastPropFromWeather(this.hass.states[popEntity]?.attributes?.forecast, forecastDate, 'precipitation_probability');
+        const popData = this._getForecastPropFromWeather(this._weatherForecast(popEntity), forecastDate, 'precipitation_probability');
         pop = popEntity ? html`<div class="f-slot-vert"><div class="f-label">Chance of rain </div>
         <div class="pop">${this.hass.states[popEntity] && popData !== undefined ? Math.round(Number(popData)) : "---"}</div><div class="unit">%</div></div>` : html``;
       } else {
@@ -753,7 +851,7 @@ export class PlatinumWeatherCard extends LitElement {
       }
       if (this._config.entity_pos_1?.match('^weather.')) {
         const posEntity = this._config.entity_pos_1;
-        const posData = this._getForecastPropFromWeather(this.hass.states[posEntity]?.attributes?.forecast, forecastDate, 'precipitation');
+        const posData = this._getForecastPropFromWeather(this._weatherForecast(posEntity), forecastDate, 'precipitation');
         pos = posEntity ? html`<div class="f-slot-vert"><div class="f-label">Possible rain </div>
         <div class="pos">${this.hass.states[posEntity] && posData !== undefined ? posData : "---"}</div><div class="unit">${this.getUOM('precipitation')}</div></div>` : html``;
       } else {
@@ -1083,16 +1181,16 @@ export class PlatinumWeatherCard extends LitElement {
     const pop = this._config.entity_pop && this.hass.states[this._config.entity_pop] !== undefined
       ? this._config.entity_pop.match('^weather.') === null
         ? Math.round(Number(this.hass.states[this._config.entity_pop].state))
-        : this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability !== undefined
-          ? Math.round(Number(this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability))
+        : this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability !== undefined
+          ? Math.round(Number(this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability))
           : '---'
       : "---";
     const pop_units = pop !== "---" ? html`<div class="slot-text unit">%</div>` : html``;
     const pos = this._config.entity_pos && this.hass.states[this._config.entity_pos] !== undefined
       ? this._config.entity_pos.match('^weather.') === null
         ? this.hass.states[this._config.entity_pos].state
-        : this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation !== undefined
-          ? this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation
+        : this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation !== undefined
+          ? this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation
           : '---'
       : "---";
     const pos_units = pos !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
@@ -1113,8 +1211,8 @@ export class PlatinumWeatherCard extends LitElement {
     const pop = this._config.entity_pop && this.hass.states[this._config.entity_pop] !== undefined
       ? this._config.entity_pop.match('^weather.') === null
         ? Math.round(Number(this.hass.states[this._config.entity_pop].state))
-        : this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability !== undefined
-          ? Math.round(Number(this.hass.states[this._config.entity_pop].attributes?.forecast?.[0]?.precipitation_probability))
+        : this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability !== undefined
+          ? Math.round(Number(this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability))
           : '---'
       : "---";
     const pop_units = pop !== "---" ? html`<div class="slot-text unit">%</div>` : html``;
@@ -1134,8 +1232,8 @@ export class PlatinumWeatherCard extends LitElement {
     const pos = this._config.entity_pos && this.hass.states[this._config.entity_pos] !== undefined
       ? this._config.entity_pos.match('^weather.') === null
         ? this.hass.states[this._config.entity_pos].state
-        : this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation !== undefined
-          ? this.hass.states[this._config.entity_pos].attributes?.forecast?.[0]?.precipitation
+        : this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation !== undefined
+          ? this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation
           : '---'
       : "---";
     const units = pos !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
@@ -1154,8 +1252,8 @@ export class PlatinumWeatherCard extends LitElement {
     const pos = this._config.entity_possible_tomorrow && this.hass.states[this._config.entity_possible_tomorrow] !== undefined
       ? this._config.entity_possible_tomorrow.match('^weather.') === null
         ? this.hass.states[this._config.entity_possible_tomorrow].state
-        : this.hass.states[this._config.entity_possible_tomorrow].attributes?.forecast?.[1]?.precipitation !== undefined
-          ? this.hass.states[this._config.entity_possible_tomorrow].attributes?.forecast?.[1]?.precipitation
+        : this._weatherForecast(this._config.entity_possible_tomorrow)?.[1]?.precipitation !== undefined
+          ? this._weatherForecast(this._config.entity_possible_tomorrow)?.[1]?.precipitation
           : '---'
       : "---";
     const units = pos !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
@@ -1253,8 +1351,8 @@ export class PlatinumWeatherCard extends LitElement {
     const temp = this._config.entity_forecast_max && this.hass.states[this._config.entity_forecast_max] !== undefined
       ? this._config.entity_forecast_max.match('^weather.') === null
         ? (Number(this.hass.states[this._config.entity_forecast_max].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-        : this.hass.states[this._config.entity_forecast_max].attributes?.forecast?.[0]?.temperature !== undefined
-          ? (Number(this.hass.states[this._config.entity_forecast_max].attributes?.forecast?.[0]?.temperature)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+        : this._weatherForecast(this._config.entity_forecast_max)?.[0]?.temperature !== undefined
+          ? (Number(this._weatherForecast(this._config.entity_forecast_max)?.[0]?.temperature)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
           : '---'
       : "---";
     const units = temp !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
@@ -1276,8 +1374,8 @@ export class PlatinumWeatherCard extends LitElement {
     const temp = this._config.entity_forecast_min && this.hass.states[this._config.entity_forecast_min] !== undefined
       ? this._config.entity_forecast_min.match('^weather.') === null
         ? (Number(this.hass.states[this._config.entity_forecast_min].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-        : this.hass.states[this._config.entity_forecast_min].attributes?.forecast?.[0]?.templow !== undefined
-          ? (Number(this.hass.states[this._config.entity_forecast_min].attributes?.forecast?.[0]?.templow)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+        : this._weatherForecast(this._config.entity_forecast_min)?.[0]?.templow !== undefined
+          ? (Number(this._weatherForecast(this._config.entity_forecast_min)?.[0]?.templow)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
           : '---'
       : "---";
     const units = temp !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
@@ -2261,7 +2359,7 @@ export class PlatinumWeatherCard extends LitElement {
       .top-left {
         display: flex;
         flex-direction: column;
-        height: 85px;
+        height: 120px;
       }
       .top-left-obs {
         display: flex;
