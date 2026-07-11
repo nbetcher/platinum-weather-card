@@ -1200,7 +1200,7 @@ export class PlatinumWeatherCard extends LitElement {
           <div class="slot-icon">
             <ha-icon icon="mdi:weather-rainy"></ha-icon>
           </div>
-          <div class="slot-text pop-text">${pop}</div>${pop_units}<div class="slot-text">&nbsp;</div>
+          <div class="slot-text pop-text">${pop}</div>${pop_units}<div class="slot-text">&nbsp;-&nbsp;</div>
           <div class="slot-text pop-text-today">${pos}</div>${pos_units}
         </div>
       </li>
@@ -1473,7 +1473,12 @@ export class PlatinumWeatherCard extends LitElement {
   }
 
   get slotUvSummary(): TemplateResult {
-    const uv = this._config.entity_uv_alert_summary && this.hass.states[this._config.entity_uv_alert_summary] !== undefined ? this.hass.states[this._config.entity_uv_alert_summary].state !== "unknown" ? this.hass.states[this._config.entity_uv_alert_summary].state : "Not Applicable" : "---";
+    var uv = this._config.entity_uv_alert_summary && this.hass.states[this._config.entity_uv_alert_summary] !== undefined ? this.hass.states[this._config.entity_uv_alert_summary].state !== "unknown" ? this.hass.states[this._config.entity_uv_alert_summary].state : "Not Applicable" : "---";
+    // A numeric state (eg. a UV index sensor) is converted to its WHO rating word
+    if (uv !== "---" && !isNaN(Number(uv))) {
+      const uvIndex = Number(uv);
+      uv = uvIndex < 3 ? "Low" : uvIndex < 6 ? "Moderate" : uvIndex < 8 ? "High" : uvIndex < 11 ? "Very High" : "Extreme";
+    }
     return html`
       <li>
         <div class="slot">
@@ -2182,7 +2187,7 @@ export class PlatinumWeatherCard extends LitElement {
       case 'ru': return "Макс сегодня";
       case 'ua': return "Макс сьогодні";
       case 'bg': return "Макс днес";
-      default: return "Forecast Max";
+      default: return "Max";
     }
   }
 
@@ -2198,7 +2203,7 @@ export class PlatinumWeatherCard extends LitElement {
       case 'ru': return "Мин сегодня";
       case 'ua': return "Мін сьогодні";
       case 'bg': return "Мин днес";
-      default: return "Forecast Min";
+      default: return "Overnight Min";
     }
   }
 
@@ -2447,7 +2452,7 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .variations {
         display: flex;
-        flex-flow: row wrap;
+        flex-flow: row nowrap;
         font-weight: 300;
         color: var(--primary-text-color);
         list-style: none;
@@ -2455,8 +2460,11 @@ export class PlatinumWeatherCard extends LitElement {
         margin-block-end: 0px;
         padding-inline-start: 8px;
       }
+      .variations > li {
+        flex: 1 1 0;
+        min-width: 0;
+      }
       .slot-list-item-1 {
-        min-width:50%;
         padding-right: 8px;
       }
       .slot-list {
@@ -2464,7 +2472,8 @@ export class PlatinumWeatherCard extends LitElement {
         padding: 0;
       }
       .slot-list li {
-        height:24px;
+        min-height: 26px;
+        line-height: 26px;
       }
       .variations-ugly {
         display: flex;
@@ -2480,7 +2489,7 @@ export class PlatinumWeatherCard extends LitElement {
       .ha-icon {
         height: 24px;
         margin-right: 5px;
-        color: var(--paper-item-icon-color);
+        color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
       }
       .unit {
         font-size: 0.8em;
@@ -2493,13 +2502,20 @@ export class PlatinumWeatherCard extends LitElement {
       .slot-icon {
         display: table-cell;
         position: relative;
-        height: 18px;
-        padding-right: 5px;
-        color: var(--paper-item-icon-color);
+        height: 24px;
+        padding-right: 8px;
+        vertical-align: middle;
+        color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
+        --mdc-icon-size: 20px;
+      }
+      .slot-icon ha-icon {
+        display: flex;
+        align-items: center;
       }
       .slot-text {
         display: table-cell;
         position: relative;
+        vertical-align: middle;
       }
       .fire-danger-text-color {
         display: inline-block;
