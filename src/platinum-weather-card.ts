@@ -2390,6 +2390,23 @@ export class PlatinumWeatherCard extends LitElement {
     const tooltipVisible = this._config.option_tooltips ? "visible" : "hidden";
     const tempFontWeight = this._config.temp_font_weight || "300";
     const tempFontSize = this._config.temp_font_size || "4em";
+    // Accent treatment for the flank high/low temperatures
+    var flankMaxAccent = '';
+    var flankMinAccent = '';
+    switch (this._config.option_minmax_accent || 'text') {
+      case 'pills':
+        flankMaxAccent = 'background: rgba(233, 128, 118, 0.16); padding: 0 7px; border-radius: 5px;';
+        flankMinAccent = 'background: rgba(100, 165, 232, 0.15); padding: 0 7px; border-radius: 5px;';
+        break;
+      case 'underline':
+        flankMaxAccent = 'border-bottom: 2px solid rgba(233, 128, 118, 0.65); padding-bottom: 1px;';
+        flankMinAccent = 'border-bottom: 2px solid rgba(100, 165, 232, 0.65); padding-bottom: 1px;';
+        break;
+      case 'text':
+      default:
+        flankMaxAccent = 'color: #e89a90;';
+        flankMinAccent = 'color: #7fb2e8;';
+    }
     const forecastTextFontSize = this._config.forecast_text_font_size || "21px";
     const forecastTextAlignment = this._config.forecast_text_alignment || "center";
 
@@ -2497,16 +2514,12 @@ export class PlatinumWeatherCard extends LitElement {
         line-height: 1.35;
         text-align: center;
       }
-      /* Dim white-washed warm/cool washes passively mark high vs low */
-      .flank-max, .flank-min {
-        padding: 0 7px;
-        border-radius: 5px;
-      }
+      /* Warm/cool accents passively mark high vs low (option_minmax_accent) */
       .flank-max {
-        background: rgba(233, 128, 118, 0.16);
+        ${unsafeCSS(flankMaxAccent)}
       }
       .flank-min {
-        background: rgba(100, 165, 232, 0.15);
+        ${unsafeCSS(flankMinAccent)}
       }
       .temp-range-bar {
         width: 23%;
