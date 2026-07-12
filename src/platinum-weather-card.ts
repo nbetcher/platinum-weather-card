@@ -2389,7 +2389,7 @@ export class PlatinumWeatherCard extends LitElement {
     // Get config flags or set defaults if not configured
     const tooltipVisible = this._config.option_tooltips ? "visible" : "hidden";
     const tempFontWeight = this._config.temp_font_weight || "300";
-    const tempFontSize = this._config.temp_font_size || "4.8em";
+    const tempFontSize = this._config.temp_font_size || "4em";
     const forecastTextFontSize = this._config.forecast_text_font_size || "21px";
     const forecastTextAlignment = this._config.forecast_text_alignment || "center";
 
@@ -2544,7 +2544,7 @@ export class PlatinumWeatherCard extends LitElement {
         display: table-cell;
         vertical-align: top;
         font-weight: ${unsafeCSS(tempFontWeight)};
-        font-size: 1.8em;
+        font-size: 1.5em;
         color: var(--primary-text-color);
         position: relative;
         line-height: 74%;
