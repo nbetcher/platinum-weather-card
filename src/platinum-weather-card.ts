@@ -2487,17 +2487,26 @@ export class PlatinumWeatherCard extends LitElement {
         display: flex;
         align-items: stretch;
         justify-content: flex-end;
-        gap: 5px;
+        gap: 6px;
       }
       .flank-col {
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         font-size: 17px;
-        line-height: 1.2;
-        text-align: left;
-        border-left: 1px solid var(--divider-color, rgba(120, 120, 120, 0.4));
-        padding-left: 5px;
+        line-height: 1.35;
+        text-align: center;
+      }
+      /* Dim white-washed warm/cool washes passively mark high vs low */
+      .flank-max, .flank-min {
+        padding: 0 7px;
+        border-radius: 5px;
+      }
+      .flank-max {
+        background: rgba(233, 128, 118, 0.16);
+      }
+      .flank-min {
+        background: rgba(100, 165, 232, 0.15);
       }
       .temp-range-bar {
         width: 23%;
