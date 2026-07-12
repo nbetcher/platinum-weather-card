@@ -2389,7 +2389,7 @@ export class PlatinumWeatherCard extends LitElement {
     // Get config flags or set defaults if not configured
     const tooltipVisible = this._config.option_tooltips ? "visible" : "hidden";
     const tempFontWeight = this._config.temp_font_weight || "300";
-    const tempFontSize = this._config.temp_font_size || "4em";
+    const tempFontSize = this._config.temp_font_size || "4.8em";
     const forecastTextFontSize = this._config.forecast_text_font_size || "21px";
     const forecastTextAlignment = this._config.forecast_text_alignment || "center";
 
@@ -2460,7 +2460,7 @@ export class PlatinumWeatherCard extends LitElement {
       .minmax-cell {
         display: table-cell;
         padding-top: 3px;
-        font-size: 14px;
+        font-size: 17px;
         white-space: nowrap;
       }
       .minmax-spacer {
@@ -2468,7 +2468,7 @@ export class PlatinumWeatherCard extends LitElement {
         width: 8px;
       }
       .minmax-up, .minmax-down {
-        font-size: 9px;
+        font-size: 11px;
         vertical-align: 2px;
       }
       .minmax-up {
@@ -2485,15 +2485,15 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .temp-flank {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: flex-end;
         gap: 5px;
       }
       .flank-col {
         display: flex;
         flex-direction: column;
-        gap: 1px;
-        font-size: 14px;
+        justify-content: space-between;
+        font-size: 17px;
         line-height: 1.2;
         text-align: left;
         border-left: 1px solid var(--divider-color, rgba(120, 120, 120, 0.4));
@@ -2524,7 +2524,7 @@ export class PlatinumWeatherCard extends LitElement {
       .range-labels {
         display: flex;
         justify-content: space-between;
-        font-size: 12px;
+        font-size: 14px;
         margin-top: 3px;
       }
       .current-temp {
@@ -2544,7 +2544,7 @@ export class PlatinumWeatherCard extends LitElement {
         display: table-cell;
         vertical-align: top;
         font-weight: ${unsafeCSS(tempFontWeight)};
-        font-size: 1.5em;
+        font-size: 1.8em;
         color: var(--primary-text-color);
         position: relative;
         line-height: 74%;
@@ -2558,8 +2558,9 @@ export class PlatinumWeatherCard extends LitElement {
         display: table-cell;
         color: var(--primary-text-color);
         font-weight: 300;
+        font-size: 1.2em;
         position: relative;
-        line-height: 24px;
+        line-height: 28px;
         white-space: nowrap;
       }
       .apparent-icon {
@@ -2568,7 +2569,12 @@ export class PlatinumWeatherCard extends LitElement {
         margin-right: 2px;
         margin-top: -3px;
         color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
-        --mdc-icon-size: 18px;
+        --mdc-icon-size: 22px;
+      }
+      .currentTemps .unit-temp-small {
+        font-size: 12.6px;
+        line-height: 17px;
+        padding-top: 4.3px;
       }
       .unit-temp-small {
         display: table-cell;
