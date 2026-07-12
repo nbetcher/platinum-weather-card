@@ -385,9 +385,12 @@ export class PlatinumWeatherCard extends LitElement {
     `;
 
     const apparent = this.currentApparentTemperature;
+    const apparentLabel = this._config.option_apparent_temp_icon === true
+      ? html`<ha-icon class="apparent-icon" icon="mdi:sun-thermometer-outline"></ha-icon>&nbsp;`
+      : html`${this.localeTextFeelsLike}&nbsp;`;
     const apparentTemp = apparent != '' ? html`
       <div class="apparent-temp">
-        <div class="apparent">${this.localeTextFeelsLike}&nbsp;${apparent}</div>
+        <div class="apparent">${apparentLabel}${apparent}</div>
         <div class="unit-temp-small"> ${this.getUOM('temperature')}</div>
       </div>
     ` : html``;
@@ -425,9 +428,12 @@ export class PlatinumWeatherCard extends LitElement {
     `;
 
     const apparent = this.currentApparentTemperature;
+    const apparentLabel = this._config.option_apparent_temp_icon === true
+      ? html`<ha-icon class="apparent-icon" icon="mdi:sun-thermometer-outline"></ha-icon>&nbsp;`
+      : html`${this.localeTextFeelsLike}&nbsp;`;
     const apparentTemp = apparent != '' ? html`
       <div class="apparent-temp">
-        <div class="apparent">${this.localeTextFeelsLike}&nbsp;${apparent}</div>
+        <div class="apparent">${apparentLabel}${apparent}</div>
         <div class="unit-temp-small"> ${this.getUOM('temperature')}</div>
       </div>
     ` : html``;
@@ -2419,6 +2425,15 @@ export class PlatinumWeatherCard extends LitElement {
         font-weight: 300;
         position: relative;
         line-height: 24px;
+        white-space: nowrap;
+      }
+      .apparent-icon {
+        display: inline-flex;
+        vertical-align: middle;
+        margin-right: 2px;
+        margin-top: -3px;
+        color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
+        --mdc-icon-size: 18px;
       }
       .unit-temp-small {
         display: table-cell;
@@ -2439,6 +2454,9 @@ export class PlatinumWeatherCard extends LitElement {
         font-size: ${unsafeCSS(forecastTextFontSize)};
         text-align: ${unsafeCSS(forecastTextAlignment)};
         line-height: 25px;
+        /* Pull the condition text into the icon's built-in whitespace - the
+           weather SVGs carry 8-30px of empty space below the glyph */
+        margin-top: -14px;
       }
       .forecast-text-right {
         font-size: ${unsafeCSS(forecastTextFontSize)};
@@ -2516,6 +2534,7 @@ export class PlatinumWeatherCard extends LitElement {
         display: table-cell;
         position: relative;
         vertical-align: middle;
+        white-space: nowrap;
       }
       .fire-danger-text-color {
         display: inline-block;

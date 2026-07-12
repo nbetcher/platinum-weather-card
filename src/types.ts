@@ -131,6 +131,7 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   forecast_text_font_size?: string;
   forecast_text_alignment?: string;
 
+  option_apparent_temp_icon?: boolean;
   option_locale?: string;
   option_static_icons?: boolean;
   option_time_format?: timeFormat;
@@ -253,6 +254,7 @@ export const weatherCardConfigKeys: (keyof WeatherCardConfig)[] = [
   'option_tooltips',
   'old_daily_format',
   'option_show_beaufort',
+  'option_apparent_temp_icon',
   'forecast_type',
   'entity',
   'tap_action',
