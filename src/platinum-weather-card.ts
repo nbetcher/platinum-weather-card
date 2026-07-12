@@ -400,6 +400,42 @@ export class PlatinumWeatherCard extends LitElement {
     const forecastText = (this._config.entity_summary) && (this.hass.states[this._config.entity_summary]) ?
       html`<div class="forecast-text">${entityComputeStateDisplay(this.hass.localize, this.hass.states[this._config.entity_summary], getLocale(this.hass))}</div>` ?? html`<div class="forecast-text">---</div>` : html``;
 
+    // Optional today's min/max display next to the current temperature
+    const minmaxStyle = this._config.option_overview_minmax || 'off';
+    const maxText = this._overviewMinMaxText('temperature');
+    const minText = this._overviewMinMaxText('templow');
+    const hasMinMax = maxText !== undefined && minText !== undefined;
+
+    const minmaxRow = minmaxStyle === 'row' && hasMinMax ? html`
+      <div class="minmax-row">
+        <div class="minmax-cell"><span class="minmax-up">&#9650;</span>&nbsp;<span class="minmax-max">${maxText}&deg;</span><span class="minmax-spacer"></span><span class="minmax-down">&#9660;</span>&nbsp;<span class="minmax-min">${minText}&deg;</span></div>
+      </div>` : html``;
+
+    const tempBlock = minmaxStyle === 'flank' && hasMinMax ? html`
+      <div class="temp-flank">
+        ${currentTemp}
+        <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-min">${minText}&deg;</span></div>
+      </div>` : currentTemp;
+
+    var rangeBar: TemplateResult = html``;
+    if (minmaxStyle === 'rangebar' && hasMinMax) {
+      const minRaw = this._overviewMinMaxRaw('templow');
+      const maxRaw = this._overviewMinMaxRaw('temperature');
+      const currentRaw = this._config.entity_temperature && this.hass.states[this._config.entity_temperature] !== undefined
+        ? this._config.entity_temperature.match('^weather.') === null
+          ? Number(this.hass.states[this._config.entity_temperature].state)
+          : Number(this.hass.states[this._config.entity_temperature].attributes.temperature)
+        : NaN;
+      const pct = minRaw !== undefined && maxRaw !== undefined && !isNaN(currentRaw)
+        ? Math.max(0, Math.min(100, Math.round(((currentRaw - minRaw) / Math.max(1e-6, maxRaw - minRaw)) * 100)))
+        : 50;
+      rangeBar = html`
+        <div class="temp-range-bar">
+          <div class="range-track"><div class="range-marker" style="left:${pct}%"></div></div>
+          <div class="range-labels"><span class="range-min">${minText}&deg;</span><span class="range-max">${maxText}&deg;</span></div>
+        </div>`;
+    }
+
     return html`
       <div class="overview-section section">
         ${this._config.text_card_title ? html`<div class="card-header">${this._config.text_card_title}</div>` : html``}
@@ -407,12 +443,35 @@ export class PlatinumWeatherCard extends LitElement {
         ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
         <div class="overview-top">
           <div class="top-left">${biggerIcon}${unknownDiv}</div>
-          <div class="currentTemps">${currentTemp}${apparentTemp}</div>
+          <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${apparentTemp}</div>
         </div>
+        ${rangeBar}
         ${forecastText}
         ${separator}
       </div>
     `;
+  }
+
+  // Today's forecast max ('temperature') or min ('templow') as a raw number,
+  // resolved from the same entities the forecast_max/forecast_min slots use
+  private _overviewMinMaxRaw(prop: 'temperature' | 'templow'): number | undefined {
+    const entityCfg = prop === 'temperature' ? this._config.entity_forecast_max : this._config.entity_forecast_min;
+    if (!entityCfg || this.hass.states[entityCfg] === undefined) {
+      return undefined;
+    }
+    const raw = entityCfg.match('^weather.') === null
+      ? this.hass.states[entityCfg].state
+      : this._weatherForecast(entityCfg)?.[0]?.[prop];
+    return raw !== undefined && !isNaN(Number(raw)) ? Number(raw) : undefined;
+  }
+
+  private _overviewMinMaxText(prop: 'temperature' | 'templow'): string | undefined {
+    const value = this._overviewMinMaxRaw(prop);
+    if (value === undefined) {
+      return undefined;
+    }
+    const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
+    return value.toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
 
   private _renderObservationsOverviewSection(): TemplateResult {
@@ -2370,15 +2429,15 @@ export class PlatinumWeatherCard extends LitElement {
       .top-left {
         display: flex;
         flex-direction: column;
-        height: 120px;
+        height: 80px;
       }
       .top-left-obs {
         display: flex;
         flex-direction: column;
       }
       .big-icon {
-        height: 120px;
-        width: 140px;
+        height: 80px;
+        width: 93px;
         position: relative;
       }
       .unknown-forecast {
@@ -2390,7 +2449,83 @@ export class PlatinumWeatherCard extends LitElement {
         display: flex;
         align-self: flex-start;
         flex-direction: column;
-        height: 60px;
+        min-height: 60px;
+      }
+      .currentTemps-end {
+        align-items: flex-end;
+      }
+      .minmax-row {
+        display: table-row;
+      }
+      .minmax-cell {
+        display: table-cell;
+        padding-top: 3px;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+      .minmax-spacer {
+        display: inline-block;
+        width: 8px;
+      }
+      .minmax-up, .minmax-down {
+        font-size: 9px;
+        vertical-align: 2px;
+      }
+      .minmax-up {
+        color: #e57373;
+      }
+      .minmax-down {
+        color: #64a5e8;
+      }
+      .minmax-max, .flank-max, .range-max {
+        font-weight: 500;
+      }
+      .minmax-min, .flank-min, .range-min {
+        color: var(--secondary-text-color);
+      }
+      .temp-flank {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 5px;
+      }
+      .flank-col {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        font-size: 14px;
+        line-height: 1.2;
+        text-align: left;
+        border-left: 1px solid var(--divider-color, rgba(120, 120, 120, 0.4));
+        padding-left: 5px;
+      }
+      .temp-range-bar {
+        width: 23%;
+        min-width: 64px;
+        margin: 6px 0 0 auto;
+      }
+      .range-track {
+        position: relative;
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #64a5e8, #f0c069, #e57373);
+      }
+      .range-marker {
+        position: absolute;
+        top: -3px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        box-sizing: border-box;
+        background: var(--primary-text-color);
+        border: 2px solid var(--card-background-color, #1c1c1c);
+        margin-left: -5px;
+      }
+      .range-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        margin-top: 3px;
       }
       .current-temp {
         display: table-row;
@@ -2455,8 +2590,9 @@ export class PlatinumWeatherCard extends LitElement {
         text-align: ${unsafeCSS(forecastTextAlignment)};
         line-height: 25px;
         /* Pull the condition text into the icon's built-in whitespace - the
-           weather SVGs carry 8-30px of empty space below the glyph */
-        margin-top: -14px;
+           weather SVGs carry empty space below the glyph. Skipped when the
+           range bar sits between the overview and the condition text. */
+        margin-top: ${unsafeCSS(this._config.option_overview_minmax === 'rangebar' ? '0' : '-10px')};
       }
       .forecast-text-right {
         font-size: ${unsafeCSS(forecastTextFontSize)};
