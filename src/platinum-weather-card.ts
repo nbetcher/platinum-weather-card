@@ -510,7 +510,7 @@ export class PlatinumWeatherCard extends LitElement {
           ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
           <div class="overview-top">
             <div class="top-left top-left-auto">${modernIcon}${unknownDiv}</div>
-            <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${modernTempCluster}${minmaxRow}</div>
+            <div class="currentTemps currentTemps-modern${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${modernTempCluster}${minmaxRow}</div>
           </div>
           <div class="modern-bottom">${conditionLeft}${apparentTemp}</div>
           ${rangeBar}
@@ -2724,6 +2724,12 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .currentTemps-end {
         align-items: flex-end;
+      }
+      /* The modern temp column no longer holds the feels-like row (it moved to
+         the bottom band), so drop the reserved min-height that would otherwise
+         leave dead space above the condition */
+      .currentTemps-modern {
+        min-height: 0;
       }
       .minmax-row {
         display: table-row;
