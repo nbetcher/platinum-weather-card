@@ -58,7 +58,9 @@ async function run() {
         const sw = parseFloat(cs.strokeWidth) || 0;
         if (cs.stroke !== 'none' && sw) { x0 -= sw / 2; y0 -= sw / 2; x1 += sw / 2; y1 += sw / 2; }
         const filt = el.getAttribute('filter') || cs.filter;
-        if (filt && filt !== 'none') { x0 -= 9; x1 += 9; y0 -= 5; y1 += 13; }
+        // The family's drop-shadow filter renders at 5% alpha (feFuncA slope
+        // 0.05) - clipping it is invisible, so keep only a whisker of slack
+        if (filt && filt !== 'none') { x0 -= 1; x1 += 1; y1 += 2; }
         box = box ? [Math.min(box[0], x0), Math.min(box[1], y0), Math.max(box[2], x1), Math.max(box[3], y1)]
                   : [x0, y0, x1, y1];
       }
