@@ -795,7 +795,7 @@ export class PlatinumWeatherCard extends LitElement {
       return html``;
     }
     return html`
-      <div class="slot-section section">
+      <div class="slot-section section modern-section">
         <div class="modern-slots">${cells}</div>
       </div>
     `;
@@ -2651,8 +2651,14 @@ export class PlatinumWeatherCard extends LitElement {
         font-size: 17px;
         /* Tight line boxes so space-between can actually push the max to the
            top and the min to the bottom of the temperature's height */
-        line-height: 1.1;
+        line-height: 1;
         text-align: center;
+      }
+      .flank-max {
+        margin-top: -2px;
+      }
+      .flank-min {
+        margin-bottom: -2px;
       }
       /* Warm/cool accents passively mark high vs low (option_minmax_accent) */
       .flank-max {
@@ -2742,38 +2748,44 @@ export class PlatinumWeatherCard extends LitElement {
       .condition-left {
         font-size: 17px;
         line-height: 1.3;
-        margin-top: 2px;
+        /* The weather SVG family shares a 56x48 canvas with ~8 units of
+           whitespace under the glyph (13px at our 80px render) - pull the
+           condition text up into it so it sits tight beneath the artwork */
+        margin-top: -12px;
         color: var(--primary-text-color);
       }
       .modern-slots {
         display: flex;
         flex-wrap: wrap;
         justify-content: space-between;
-        gap: 10px 14px;
+        gap: 8px 10px;
         background: rgba(var(--rgb-primary-text-color, 128, 128, 128), 0.05);
         border-radius: 10px;
-        padding: 10px 12px;
+        padding: 8px 10px;
       }
       .m-slot {
         flex: 0 0 auto;
       }
+      .modern-section {
+        padding-top: 0px;
+      }
       .m-slot-label {
-        font-size: 10px;
-        letter-spacing: 0.06em;
+        font-size: 9px;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
         font-weight: 500;
         color: var(--secondary-text-color);
         white-space: nowrap;
       }
       .m-slot-label ha-icon {
-        --mdc-icon-size: 12px;
+        --mdc-icon-size: 11px;
         display: inline-flex;
         vertical-align: middle;
         margin: -2px 1px 0 0;
         color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
       }
       .m-slot-value {
-        font-size: 13px;
+        font-size: 12.5px;
         margin-top: 1px;
         white-space: nowrap;
         color: var(--primary-text-color);
