@@ -443,8 +443,12 @@ export class PlatinumWeatherCard extends LitElement {
     // Modern layout: the condition text anchors under the icon instead of
     // floating centered below the overview, and the separator is dropped
     if (this._config.option_modern_layout === true) {
+      // When the slots panel renders below, indent the condition text to line
+      // up with the panel's first item
+      const slotsPanelShown = this._config.show_section_slots !== false &&
+        (this._config.section_order === undefined || this._config.section_order.includes('slots'));
       const conditionLeft = (this._config.entity_summary) && (this.hass.states[this._config.entity_summary]) ?
-        html`<div class="condition-left">${entityComputeStateDisplay(this.hass.localize, this.hass.states[this._config.entity_summary], getLocale(this.hass))}</div>` : html``;
+        html`<div class="condition-left${slotsPanelShown ? ' condition-left-inset' : ''}">${entityComputeStateDisplay(this.hass.localize, this.hass.states[this._config.entity_summary], getLocale(this.hass))}</div>` : html``;
       return html`
         <div class="overview-section section">
           ${this._config.text_card_title ? html`<div class="card-header">${this._config.text_card_title}</div>` : html``}
@@ -2591,8 +2595,10 @@ export class PlatinumWeatherCard extends LitElement {
         flex-direction: column;
       }
       .big-icon {
+        /* The trimmed icon set renders on a 51:48 viewBox with content
+           bottom-anchored - the box now hugs the artwork */
         height: 80px;
-        width: 93px;
+        width: 85px;
         position: relative;
       }
       .unknown-forecast {
@@ -2748,11 +2754,14 @@ export class PlatinumWeatherCard extends LitElement {
       .condition-left {
         font-size: 17px;
         line-height: 1.3;
-        /* The weather SVG family shares a 56x48 canvas with ~8 units of
-           whitespace under the glyph (13px at our 80px render) - pull the
-           condition text up into it so it sits tight beneath the artwork */
-        margin-top: -12px;
+        /* Icon content is bottom-anchored in its trimmed viewBox, so a small
+           constant gap is all that's needed */
+        margin-top: 3px;
         color: var(--primary-text-color);
+      }
+      .condition-left-inset {
+        /* Line up with the first item inside the slots panel (10px padding) */
+        margin-left: 10px;
       }
       .modern-slots {
         display: flex;
@@ -2820,10 +2829,9 @@ export class PlatinumWeatherCard extends LitElement {
         font-size: ${unsafeCSS(forecastTextFontSize)};
         text-align: ${unsafeCSS(forecastTextAlignment)};
         line-height: 25px;
-        /* Pull the condition text into the icon's built-in whitespace - the
-           weather SVGs carry empty space below the glyph. Skipped when the
-           range bar sits between the overview and the condition text. */
-        margin-top: ${unsafeCSS(this._config.option_overview_minmax === 'rangebar' ? '0' : '-10px')};
+        /* Icon artwork is bottom-anchored in its trimmed viewBox, so no
+           negative pull is needed */
+        margin-top: 0;
       }
       .forecast-text-right {
         font-size: ${unsafeCSS(forecastTextFontSize)};

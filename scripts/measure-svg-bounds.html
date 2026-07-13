@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!--
+  Measures the true ink bounds of every weather SVG in ../dist, INCLUDING
+  animated travel and the blur/shadow filter, then reports one standard
+  box (in the shared 56x48 canvas space) that contains every icon's content.
+
+  Usage: serve the repo root (eg. `python -m http.server`) and open
+  /scripts/measure-svg-bounds.html. Results land in window.__svgScan and in
+  the <pre> below. Feed the JSON to scripts/apply-svg-viewbox.py.
+
+  Method: each icon is inlined at intrinsic size, its CSS animations are
+  paused and stepped through one full cycle with negative animation-delays,
+  and the union of every graphical element's bounding rect (plus stroke and
+  shadow-filter allowances) is accumulated, clamped to the canvas since
+  anything outside it is clipped at render time anyway.
+-->
+<meta charset="utf-8">
+<title>SVG bounds scan</title>
+<div id="host" style="position:fixed;left:0;top:0;width:56px;height:48px;opacity:1"></div>
+<pre id="out" style="margin-top:60px">scanning...</pre>
+<script>
+async function run() {
+  const idx = await (await fetch('/dist/')).text();
+  const files = [...idx.matchAll(/href="([^"]+\.svg)"/g)]
+    .map(m => decodeURIComponent(m[1]))
+    .filter(f => /^(a|s)-/.test(f));
+  const host = document.getElementById('host');
+  const results = {};
+  let union = null;
+  const SAMPLES = 24;
+  for (const f of files) {
+    const txt = await (await fetch('/dist/' + f)).text();
+    host.innerHTML = txt;
+    const svg = host.querySelector('svg');
+    const sroot = svg.getBoundingClientRect();
+    const els = [...svg.querySelectorAll('path,circle,rect,ellipse,line,polyline,polygon,use')];
+    let D = 0;
+    [...svg.querySelectorAll('*')].forEach(el => {
+      (getComputedStyle(el).animationDuration || '').split(',').forEach(d => {
+        const s = parseFloat(d); if (s) D = Math.max(D, s);
+      });
+    });
+    const steps = D > 0 ? SAMPLES : 1;
+    let box = null;
+    for (let i = 0; i < steps; i++) {
+      const t = D > 0 ? (D * i / steps) : 0;
+      [...svg.querySelectorAll('*')].forEach(el => {
+        el.style.animationDelay = '-' + t + 's';
+        el.style.animationPlayState = 'paused';
+      });
+      void svg.getBoundingClientRect();
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        let x0 = r.left - sroot.left, y0 = r.top - sroot.top;
+        let x1 = x0 + r.width, y1 = y0 + r.height;
+        const cs = getComputedStyle(el);
+        const sw = parseFloat(cs.strokeWidth) || 0;
+        if (cs.stroke !== 'none' && sw) { x0 -= sw / 2; y0 -= sw / 2; x1 += sw / 2; y1 += sw / 2; }
+        const filt = el.getAttribute('filter') || cs.filter;
+        if (filt && filt !== 'none') { x0 -= 9; x1 += 9; y0 -= 5; y1 += 13; }
+        box = box ? [Math.min(box[0], x0), Math.min(box[1], y0), Math.max(box[2], x1), Math.max(box[3], y1)]
+                  : [x0, y0, x1, y1];
+      }
+    }
+    box = [Math.max(0, box[0]), Math.max(0, box[1]), Math.min(sroot.width, box[2]), Math.min(sroot.height, box[3])];
+    results[f] = box.map(v => Math.round(v * 100) / 100);
+    union = union ? [Math.min(union[0], box[0]), Math.min(union[1], box[1]), Math.max(union[2], box[2]), Math.max(union[3], box[3])]
+                  : box.slice();
+  }
+  const std = [Math.floor(union[0]), Math.floor(union[1]), Math.ceil(union[2]), Math.ceil(union[3])];
+  window.__svgScan = {
+    standard: { x: std[0], y: std[1], w: std[2] - std[0], h: std[3] - std[1] },
+    scanned: files.length,
+    files: results,
+  };
+  document.getElementById('out').textContent = JSON.stringify(window.__svgScan, null, 1);
+}
+run();
+</script>
