@@ -260,6 +260,18 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     return this._config?.option_show_overview_separator === true; // default off
   }
 
+  get _option_overview_minmax(): string {
+    return this._config?.option_overview_minmax || '';
+  }
+
+  get _option_minmax_accent(): string {
+    return this._config?.option_minmax_accent || '';
+  }
+
+  get _option_apparent_temp_icon(): boolean {
+    return this._config?.option_apparent_temp_icon === true; // default off
+  }
+
   get _entity_extended(): string {
     return this._config?.entity_extended || '';
   }
@@ -1020,6 +1032,34 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
             </ha-switch>
           </ha-formfield>
         </div>
+      </div>
+      <div class="side-by-side">
+        <ha-select label="Today's Min/Max beside Temperature" .configValue=${'option_overview_minmax'}
+          .value=${this._option_overview_minmax} @closed=${(ev: { stopPropagation: () => any; }) => ev.stopPropagation()} @selected=${this._valueChanged}>
+          <mwc-list-item></mwc-list-item>
+          <mwc-list-item value="off">off</mwc-list-item>
+          <mwc-list-item value="row">row (high/low arrows below)</mwc-list-item>
+          <mwc-list-item value="flank">flank (column beside temp)</mwc-list-item>
+          <mwc-list-item value="rangebar">range bar</mwc-list-item>
+        </ha-select>
+        ${this._option_overview_minmax === 'flank' ? html`
+        <ha-select label="Min/Max Accent Style" .configValue=${'option_minmax_accent'}
+          .value=${this._option_minmax_accent} @closed=${(ev: { stopPropagation: () => any; }) => ev.stopPropagation()} @selected=${this._valueChanged}>
+          <mwc-list-item></mwc-list-item>
+          <mwc-list-item value="text">tinted text</mwc-list-item>
+          <mwc-list-item value="pills">tinted pills</mwc-list-item>
+          <mwc-list-item value="underline">underlines</mwc-list-item>
+        </ha-select>` : html`<div></div>`}
+      </div>
+      <div class="side-by-side">
+        <div>
+          <ha-formfield .label=${'Show feels-like as icon'}>
+            <ha-switch .checked=${this._option_apparent_temp_icon !== false} .configValue=${'option_apparent_temp_icon'}
+              @change=${this._valueChanged}>
+            </ha-switch>
+          </ha-formfield>
+        </div>
+        <div></div>
       </div>
     `;
   }
