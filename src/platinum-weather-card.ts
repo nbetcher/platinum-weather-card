@@ -494,18 +494,25 @@ export class PlatinumWeatherCard extends LitElement {
       const conditionLeft = (this._config.entity_summary) && (this.hass.states[this._config.entity_summary]) ?
         html`<div class="condition-left${slotsPanelShown ? ' condition-left-inset' : ''}">${entityComputeStateDisplay(this.hass.localize, this.hass.states[this._config.entity_summary], getLocale(this.hass))}</div>` : html``;
       // Top/left-justified artwork: the per-icon viewBox height hugs the
-      // content, so an auto-height container starts the glyph at the top
-      // edge and the condition text follows immediately below it
+      // content, so an auto-height container starts the glyph at the top edge
       const modernIcon = html`<div class="big-icon-modern"><img src="${iconUrl}" title="${hoverText}"></div>`;
+      // The feels-like row moves out of the temperature cluster and onto the
+      // bottom band so the condition text can run horizontally up to it
+      const modernTempCluster = flankActive ? html`
+        <div class="temp-flank${minmaxStyle === 'flank_left' ? ' temp-flank-left' : ''}">
+          ${currentTemp}
+          <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-sep"></span><span class="flank-min">${minText}&deg;</span></div>
+        </div>` : currentTemp;
       return html`
         <div class="overview-section section">
           ${this._config.text_card_title ? html`<div class="card-header">${this._config.text_card_title}</div>` : html``}
           ${this._config.text_card_title_2 ? html`<div class="card-header">${this._config.text_card_title_2}</div>` : html``}
           ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
           <div class="overview-top">
-            <div class="top-left top-left-auto">${modernIcon}${unknownDiv}${conditionLeft}</div>
-            <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${flankActive ? html`` : apparentTemp}</div>
+            <div class="top-left top-left-auto">${modernIcon}${unknownDiv}</div>
+            <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${modernTempCluster}${minmaxRow}</div>
           </div>
+          <div class="modern-bottom">${conditionLeft}${apparentTemp}</div>
           ${rangeBar}
         </div>
       `;
@@ -2886,6 +2893,25 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .top-left-auto {
         height: auto;
+      }
+      /* Modern layout: condition + feels-like share a full-width band beneath
+         the icon/temperature row, so the condition can run left-to-right up to
+         the heat-index value instead of wrapping under the narrow icon column */
+      .modern-bottom {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .modern-bottom .condition-left {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-top: 0;
+      }
+      .modern-bottom .apparent-temp {
+        flex: 0 0 auto;
+        margin-left: 0;
       }
       .condition-left {
         font-size: 17px;
