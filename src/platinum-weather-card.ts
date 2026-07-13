@@ -419,7 +419,7 @@ export class PlatinumWeatherCard extends LitElement {
     const tempBlock = minmaxStyle === 'flank' && hasMinMax ? html`
       <div class="temp-flank">
         ${currentTemp}
-        <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-sep"><span class="flank-sep-down">&#9660;</span><span class="flank-sep-up">&#9650;</span></span><span class="flank-min">${minText}&deg;</span></div>
+        <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-sep"></span><span class="flank-min">${minText}&deg;</span></div>
       </div>` : currentTemp;
 
     var rangeBar: TemplateResult = html``;
@@ -453,7 +453,7 @@ export class PlatinumWeatherCard extends LitElement {
       // Top/left-justified artwork: the per-icon viewBox height hugs the
       // content, so an auto-height container starts the glyph at the top
       // edge and the condition text follows immediately below it
-      const modernIcon = html`<div class="big-icon-modern"><img src="${url.href}" width="100%" title="${hoverText}"></div>`;
+      const modernIcon = html`<div class="big-icon-modern"><img src="${url.href}" title="${hoverText}"></div>`;
       return html`
         <div class="overview-section section">
           ${this._config.text_card_title ? html`<div class="card-header">${this._config.text_card_title}</div>` : html``}
@@ -2621,6 +2621,11 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .big-icon-modern img {
         display: block;
+        /* Icon viewBoxes are exact-fit per icon; render every icon at the
+           same fixed scale (px per svg unit) from its intrinsic size */
+        width: auto;
+        height: auto;
+        zoom: 1.667;
       }
       .unknown-forecast {
         position: relative;
@@ -2687,23 +2692,13 @@ export class PlatinumWeatherCard extends LitElement {
       .flank-min {
         margin-bottom: -2px;
       }
-      /* Tiny cold-down / hot-up arrow pair separating the flank temps.
-         Zero-height line box so it consumes only the existing gap */
+      /* Dimmed hairline separating the flank temps - half the cell width,
+         centered, and only 1px tall so the temperatures keep their positions */
       .flank-sep {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 1px;
+        align-self: center;
+        width: 50%;
         height: 0;
-        overflow: visible;
-        font-size: 8px;
-        line-height: 1;
-      }
-      .flank-sep-down {
-        color: #7fb2e8;
-      }
-      .flank-sep-up {
-        color: #e89a90;
+        border-top: 1px solid rgba(var(--rgb-primary-text-color, 128, 128, 128), 0.25);
       }
       /* Warm/cool accents passively mark high vs low (option_minmax_accent) */
       .flank-max {
