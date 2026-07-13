@@ -419,7 +419,7 @@ export class PlatinumWeatherCard extends LitElement {
     const tempBlock = minmaxStyle === 'flank' && hasMinMax ? html`
       <div class="temp-flank">
         ${currentTemp}
-        <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-min">${minText}&deg;</span></div>
+        <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-sep"><span class="flank-sep-down">&#9660;</span><span class="flank-sep-up">&#9650;</span></span><span class="flank-min">${minText}&deg;</span></div>
       </div>` : currentTemp;
 
     var rangeBar: TemplateResult = html``;
@@ -450,13 +450,17 @@ export class PlatinumWeatherCard extends LitElement {
         (this._config.section_order === undefined || this._config.section_order.includes('slots'));
       const conditionLeft = (this._config.entity_summary) && (this.hass.states[this._config.entity_summary]) ?
         html`<div class="condition-left${slotsPanelShown ? ' condition-left-inset' : ''}">${entityComputeStateDisplay(this.hass.localize, this.hass.states[this._config.entity_summary], getLocale(this.hass))}</div>` : html``;
+      // Top/left-justified artwork: the per-icon viewBox height hugs the
+      // content, so an auto-height container starts the glyph at the top
+      // edge and the condition text follows immediately below it
+      const modernIcon = html`<div class="big-icon-modern"><img src="${url.href}" width="100%" title="${hoverText}"></div>`;
       return html`
         <div class="overview-section section">
           ${this._config.text_card_title ? html`<div class="card-header">${this._config.text_card_title}</div>` : html``}
           ${this._config.text_card_title_2 ? html`<div class="card-header">${this._config.text_card_title_2}</div>` : html``}
           ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
           <div class="overview-top">
-            <div class="top-left top-left-auto">${biggerIcon}${unknownDiv}${conditionLeft}</div>
+            <div class="top-left top-left-auto">${modernIcon}${unknownDiv}${conditionLeft}</div>
             <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${apparentTemp}</div>
           </div>
           ${rangeBar}
@@ -2601,11 +2605,22 @@ export class PlatinumWeatherCard extends LitElement {
         flex-direction: column;
       }
       .big-icon {
-        /* The trimmed icon set renders on a 51:48 viewBox with content
-           bottom-anchored - the box now hugs the artwork */
         height: 80px;
         width: 85px;
         position: relative;
+      }
+      .big-icon img {
+        /* Icon viewBox heights vary per icon (they hug the artwork) - keep
+           the classic fixed box bottom-anchored like the original look */
+        object-fit: contain;
+        object-position: center bottom;
+      }
+      .big-icon-modern {
+        width: 85px;
+        position: relative;
+      }
+      .big-icon-modern img {
+        display: block;
       }
       .unknown-forecast {
         position: relative;
@@ -2671,6 +2686,24 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .flank-min {
         margin-bottom: -2px;
+      }
+      /* Tiny cold-down / hot-up arrow pair separating the flank temps.
+         Zero-height line box so it consumes only the existing gap */
+      .flank-sep {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1px;
+        height: 0;
+        overflow: visible;
+        font-size: 8px;
+        line-height: 1;
+      }
+      .flank-sep-down {
+        color: #7fb2e8;
+      }
+      .flank-sep-up {
+        color: #e89a90;
       }
       /* Warm/cool accents passively mark high vs low (option_minmax_accent) */
       .flank-max {

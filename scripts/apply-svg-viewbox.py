@@ -5,11 +5,11 @@ Reads scripts/svg-viewboxes.json (produced from scripts/measure-svg-bounds.html,
 which samples each icon's CSS animations over a full cycle so moving content
 counts) and rewrites every dist/ weather SVG with a standard-size viewBox:
 
-  - One size for the whole family (W x H = the union of every icon's content
-    extents) so no icon renders at a different scale and card layout stays put.
-  - Per-icon window position: x-centered on the icon's content, bottom-anchored
-    so every icon's ink ends at its container's bottom edge (text below the
-    icon gets a constant gap regardless of condition).
+  - One WIDTH for the whole family (W = the union of every icon's content
+    width) so no icon renders at a different scale and horizontal layout
+    stays put; per-icon HEIGHT hugging the artwork so a width-constrained
+    render is top-justified with no dead space above or below the glyph.
+  - Per-icon window x: centered on the icon's content.
 
 Idempotent: an svg that already carries a viewBox is rewritten from its
 original 56x48 assumption only if it still declares width="56" height="48";
@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
 DATA = json.loads((Path(__file__).parent / 'svg-viewboxes.json').read_text())
-W, H, BOXES = DATA['W'], DATA['H'], DATA['boxes']
+W, BOXES = DATA['W'], DATA['boxes']
 
 # Most of the family is 56x48; two icons are 56x56 and the 'unknown' pair is
 # 64x64 with a matching viewBox. Measurements were taken at natural render
@@ -31,7 +31,7 @@ W, H, BOXES = DATA['W'], DATA['H'], DATA['boxes']
 OPEN_TAG = re.compile(r'<svg([^>]*?)\swidth="\d+"\sheight="\d+"(?:\sviewBox="[^"]*")?([^>]*?)>')
 
 changed, skipped = 0, 0
-for name, (x, y) in BOXES.items():
+for name, (x, y, h) in BOXES.items():
     path = DIST / name
     if not path.exists():
         print(f'MISSING {name}')
@@ -39,8 +39,8 @@ for name, (x, y) in BOXES.items():
         continue
     text = path.read_text(encoding='utf-8')
     def repl(m):
-        return (f'<svg{m.group(1)} width="{W}" height="{H}" '
-                f'viewBox="{x} {y} {W} {H}"{m.group(2)}>')
+        return (f'<svg{m.group(1)} width="{W}" height="{h}" '
+                f'viewBox="{x} {y} {W} {h}"{m.group(2)}>')
     new, n = OPEN_TAG.subn(repl, text, count=1)
     if n == 0:
         print(f'SKIP (unexpected root tag) {name}')
