@@ -2395,8 +2395,8 @@ export class PlatinumWeatherCard extends LitElement {
     var flankMinAccent = '';
     switch (this._config.option_minmax_accent || 'text') {
       case 'pills':
-        flankMaxAccent = 'background: rgba(233, 128, 118, 0.16); padding: 0 7px; border-radius: 5px;';
-        flankMinAccent = 'background: rgba(100, 165, 232, 0.15); padding: 0 7px; border-radius: 5px;';
+        flankMaxAccent = 'background: rgba(233, 128, 118, 0.16); padding: 1px 7px; border-radius: 5px;';
+        flankMinAccent = 'background: rgba(100, 165, 232, 0.15); padding: 1px 7px; border-radius: 5px;';
         break;
       case 'underline':
         flankMaxAccent = 'border-bottom: 2px solid rgba(233, 128, 118, 0.65); padding-bottom: 1px;';
@@ -2511,7 +2511,9 @@ export class PlatinumWeatherCard extends LitElement {
         flex-direction: column;
         justify-content: space-between;
         font-size: 17px;
-        line-height: 1.35;
+        /* Tight line boxes so space-between can actually push the max to the
+           top and the min to the bottom of the temperature's height */
+        line-height: 1.1;
         text-align: center;
       }
       /* Warm/cool accents passively mark high vs low (option_minmax_accent) */
