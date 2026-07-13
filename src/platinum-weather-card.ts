@@ -416,10 +416,15 @@ export class PlatinumWeatherCard extends LitElement {
         <div class="minmax-cell"><span class="minmax-up">&#9650;</span>&nbsp;<span class="minmax-max">${maxText}&deg;</span><span class="minmax-spacer"></span><span class="minmax-down">&#9660;</span>&nbsp;<span class="minmax-min">${minText}&deg;</span></div>
       </div>` : html``;
 
-    const tempBlock = minmaxStyle === 'flank' && hasMinMax ? html`
+    // In flank mode the feels-like row is placed inside the grid under the
+    // temperature column, so its right edge lines up with the temperature
+    // rather than with the flank column
+    const flankActive = minmaxStyle === 'flank' && hasMinMax;
+    const tempBlock = flankActive ? html`
       <div class="temp-flank">
         ${currentTemp}
         <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-sep"></span><span class="flank-min">${minText}&deg;</span></div>
+        ${apparentTemp}
       </div>` : currentTemp;
 
     var rangeBar: TemplateResult = html``;
@@ -461,7 +466,7 @@ export class PlatinumWeatherCard extends LitElement {
           ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
           <div class="overview-top">
             <div class="top-left top-left-auto">${modernIcon}${unknownDiv}${conditionLeft}</div>
-            <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${apparentTemp}</div>
+            <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${flankActive ? html`` : apparentTemp}</div>
           </div>
           ${rangeBar}
         </div>
@@ -475,7 +480,7 @@ export class PlatinumWeatherCard extends LitElement {
         ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
         <div class="overview-top">
           <div class="top-left">${biggerIcon}${unknownDiv}</div>
-          <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${apparentTemp}</div>
+          <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${flankActive ? html`` : apparentTemp}</div>
         </div>
         ${rangeBar}
         ${forecastText}
@@ -2671,10 +2676,23 @@ export class PlatinumWeatherCard extends LitElement {
         color: var(--secondary-text-color);
       }
       .temp-flank {
-        display: flex;
-        align-items: stretch;
-        justify-content: flex-end;
-        gap: 6px;
+        /* Two-column grid: temperature (r1c1) with the feels-like row
+           beneath it (r2c1) right-justified to the temperature's edge,
+           and the flank column (r1c2) spanning only the temperature row */
+        display: grid;
+        grid-template-columns: auto auto;
+        justify-content: end;
+        column-gap: 6px;
+      }
+      .temp-flank .flank-col {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .temp-flank .apparent-temp {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: end;
+        margin-top: 3px;
       }
       .flank-col {
         display: flex;
