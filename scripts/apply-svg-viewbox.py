@@ -11,9 +11,9 @@ counts) and rewrites every dist/ weather SVG with a standard-size viewBox:
     (px per user unit), while fixed-box contexts (classic overview, daily
     forecast tiles) use contain-fit, which sizes every icon equally.
 
-Idempotent: an svg that already carries a viewBox is rewritten from its
-original 56x48 assumption only if it still declares width="56" height="48";
-otherwise it is reported and skipped.
+Idempotent: the root tag's width/height/viewBox (original integer canvas or a
+previously applied float window) are replaced wholesale, and any stray viewBox
+elsewhere in the tag is stripped, so re-running converges on the same output.
 """
 import json
 import re
@@ -28,7 +28,9 @@ BOXES = DATA['boxes']
 # Most of the family is 56x48; two icons are 56x56 and the 'unknown' pair is
 # 64x64 with a matching viewBox. Measurements were taken at natural render
 # scale (1 css px = 1 user unit) so the same window values apply to each.
-OPEN_TAG = re.compile(r'<svg([^>]*?)\swidth="\d+"\sheight="\d+"(?:\sviewBox="[^"]*")?([^>]*?)>')
+# Widths/heights may be floats after a previous exact-fit rewrite
+OPEN_TAG = re.compile(r'<svg([^>]*?)\swidth="[\d.]+"\sheight="[\d.]+"(?:\sviewBox="[^"]*")?([^>]*?)>')
+VIEWBOX_ATTR = re.compile(r'\sviewBox="[^"]*"')
 
 changed, skipped = 0, 0
 for name, (x, y, w, h) in BOXES.items():
@@ -39,23 +41,20 @@ for name, (x, y, w, h) in BOXES.items():
         continue
     text = path.read_text(encoding='utf-8')
     def repl(m):
-        return (f'<svg{m.group(1)} width="{w}" height="{h}" '
-                f'viewBox="{x} {y} {w} {h}"{m.group(2)}>')
+        # A pre-existing viewBox may sit elsewhere in the tag (eg. after
+        # version=) - strip it so the root never carries duplicate attributes
+        pre = VIEWBOX_ATTR.sub('', m.group(1))
+        post = VIEWBOX_ATTR.sub('', m.group(2))
+        return (f'<svg{pre} width="{w}" height="{h}" '
+                f'viewBox="{x} {y} {w} {h}"{post}>')
     new, n = OPEN_TAG.subn(repl, text, count=1)
     if n == 0:
         print(f'SKIP (unexpected root tag) {name}')
         skipped += 1
         continue
-    # A pre-existing viewBox may sit elsewhere in the tag (eg. after version=)
-    # - drop it so the root never carries duplicate attributes
-    head, rest = new.split('>', 1)
-    if head.count('viewBox=') > 1:
-        first = head.index('viewBox=')
-        dup = re.compile(r'\sviewBox="[^"]*"')
-        head = head[:first + 8] + dup.sub('', head[first + 8:])
-        new = head + '>' + rest
-    path.write_text(new, encoding='utf-8')
-    changed += 1
+    if new != text:
+        path.write_text(new, encoding='utf-8')
+        changed += 1
 
 print(f'rewrote {changed} svgs, skipped {skipped}')
 sys.exit(1 if skipped else 0)
