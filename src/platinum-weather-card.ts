@@ -419,9 +419,9 @@ export class PlatinumWeatherCard extends LitElement {
     // In flank mode the feels-like row is placed inside the grid under the
     // temperature column, so its right edge lines up with the temperature
     // rather than with the flank column
-    const flankActive = minmaxStyle === 'flank' && hasMinMax;
+    const flankActive = (minmaxStyle === 'flank' || minmaxStyle === 'flank_left') && hasMinMax;
     const tempBlock = flankActive ? html`
-      <div class="temp-flank">
+      <div class="temp-flank${minmaxStyle === 'flank_left' ? ' temp-flank-left' : ''}">
         ${currentTemp}
         <div class="flank-col"><span class="flank-max">${maxText}&deg;</span><span class="flank-sep"></span><span class="flank-min">${minText}&deg;</span></div>
         ${apparentTemp}
@@ -2694,6 +2694,18 @@ export class PlatinumWeatherCard extends LitElement {
         justify-self: end;
         margin-top: 3px;
       }
+      /* flank_left mirrors the cluster: min/max column left, temperature
+         right, feels-like stays right-justified under the temperature */
+      .temp-flank-left .flank-col {
+        grid-column: 1;
+      }
+      .temp-flank-left .current-temp {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .temp-flank-left .apparent-temp {
+        grid-column: 2;
+      }
       .flank-col {
         display: flex;
         flex-direction: column;
@@ -2826,6 +2838,7 @@ export class PlatinumWeatherCard extends LitElement {
       }
       .m-slot {
         flex: 0 0 auto;
+        text-align: center;
       }
       .modern-section {
         padding-top: 0px;

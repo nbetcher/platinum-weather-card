@@ -132,7 +132,7 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   forecast_text_alignment?: string;
 
   option_apparent_temp_icon?: boolean;
-  option_overview_minmax?: 'off' | 'row' | 'flank' | 'rangebar';
+  option_overview_minmax?: 'off' | 'row' | 'flank' | 'flank_left' | 'rangebar';
   option_minmax_accent?: 'text' | 'pills' | 'underline';
   option_modern_layout?: boolean;
   option_locale?: string;

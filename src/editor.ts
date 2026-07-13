@@ -1043,10 +1043,11 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
           <mwc-list-item></mwc-list-item>
           <mwc-list-item value="off">off</mwc-list-item>
           <mwc-list-item value="row">row (high/low arrows below)</mwc-list-item>
-          <mwc-list-item value="flank">flank (column beside temp)</mwc-list-item>
+          <mwc-list-item value="flank">flank (column right of temp)</mwc-list-item>
+          <mwc-list-item value="flank_left">flank left (column left of temp)</mwc-list-item>
           <mwc-list-item value="rangebar">range bar</mwc-list-item>
         </ha-select>
-        ${this._option_overview_minmax === 'flank' ? html`
+        ${this._option_overview_minmax === 'flank' || this._option_overview_minmax === 'flank_left' ? html`
         <ha-select label="Min/Max Accent Style" .configValue=${'option_minmax_accent'}
           .value=${this._option_minmax_accent} @closed=${(ev: { stopPropagation: () => any; }) => ev.stopPropagation()} @selected=${this._valueChanged}>
           <mwc-list-item></mwc-list-item>
