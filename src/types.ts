@@ -134,6 +134,7 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   option_apparent_temp_icon?: boolean;
   option_overview_minmax?: 'off' | 'row' | 'flank' | 'rangebar';
   option_minmax_accent?: 'text' | 'pills' | 'underline';
+  option_modern_layout?: boolean;
   option_locale?: string;
   option_static_icons?: boolean;
   option_time_format?: timeFormat;
@@ -259,6 +260,7 @@ export const weatherCardConfigKeys: (keyof WeatherCardConfig)[] = [
   'option_apparent_temp_icon',
   'option_overview_minmax',
   'option_minmax_accent',
+  'option_modern_layout',
   'forecast_type',
   'entity',
   'tap_action',

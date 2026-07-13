@@ -385,12 +385,16 @@ export class PlatinumWeatherCard extends LitElement {
     `;
 
     const apparent = this.currentApparentTemperature;
-    const apparentLabel = this._config.option_apparent_temp_icon === true
-      ? html`<ha-icon class="apparent-icon" icon="mdi:sun-thermometer-outline"></ha-icon>&nbsp;`
-      : html`${this.localeTextFeelsLike}&nbsp;`;
-    const apparentTemp = apparent != '' ? html`
+    const apparentTemp = apparent != '' ? this._config.option_apparent_temp_icon === true
+      ? html`
       <div class="apparent-temp">
-        <div class="apparent">${apparentLabel}${apparent}</div>
+        <div class="apparent">${apparent}</div>
+        <div class="unit-temp-small"> ${this.getUOM('temperature')}</div>
+        <div class="apparent-icon-cell"><ha-icon class="apparent-icon" icon="mdi:sun-thermometer-outline"></ha-icon></div>
+      </div>
+    ` : html`
+      <div class="apparent-temp">
+        <div class="apparent">${this.localeTextFeelsLike}&nbsp;${apparent}</div>
         <div class="unit-temp-small"> ${this.getUOM('temperature')}</div>
       </div>
     ` : html``;
@@ -434,6 +438,25 @@ export class PlatinumWeatherCard extends LitElement {
           <div class="range-track"><div class="range-marker" style="left:${pct}%"></div></div>
           <div class="range-labels"><span class="range-min">${minText}&deg;</span><span class="range-max">${maxText}&deg;</span></div>
         </div>`;
+    }
+
+    // Modern layout: the condition text anchors under the icon instead of
+    // floating centered below the overview, and the separator is dropped
+    if (this._config.option_modern_layout === true) {
+      const conditionLeft = (this._config.entity_summary) && (this.hass.states[this._config.entity_summary]) ?
+        html`<div class="condition-left">${entityComputeStateDisplay(this.hass.localize, this.hass.states[this._config.entity_summary], getLocale(this.hass))}</div>` : html``;
+      return html`
+        <div class="overview-section section">
+          ${this._config.text_card_title ? html`<div class="card-header">${this._config.text_card_title}</div>` : html``}
+          ${this._config.text_card_title_2 ? html`<div class="card-header">${this._config.text_card_title_2}</div>` : html``}
+          ${this._config.entity_update_time ? html`<div class="updated">${this._config.text_update_time_prefix ? this._config.text_update_time_prefix + ' ' : ''}${this._renderUpdateTime()}</div>` : html``}
+          <div class="overview-top">
+            <div class="top-left top-left-auto">${biggerIcon}${unknownDiv}${conditionLeft}</div>
+            <div class="currentTemps${minmaxStyle === 'flank' ? ' currentTemps-end' : ''}">${tempBlock}${minmaxRow}${apparentTemp}</div>
+          </div>
+          ${rangeBar}
+        </div>
+      `;
     }
 
     return html`
@@ -487,12 +510,16 @@ export class PlatinumWeatherCard extends LitElement {
     `;
 
     const apparent = this.currentApparentTemperature;
-    const apparentLabel = this._config.option_apparent_temp_icon === true
-      ? html`<ha-icon class="apparent-icon" icon="mdi:sun-thermometer-outline"></ha-icon>&nbsp;`
-      : html`${this.localeTextFeelsLike}&nbsp;`;
-    const apparentTemp = apparent != '' ? html`
+    const apparentTemp = apparent != '' ? this._config.option_apparent_temp_icon === true
+      ? html`
       <div class="apparent-temp">
-        <div class="apparent">${apparentLabel}${apparent}</div>
+        <div class="apparent">${apparent}</div>
+        <div class="unit-temp-small"> ${this.getUOM('temperature')}</div>
+        <div class="apparent-icon-cell"><ha-icon class="apparent-icon" icon="mdi:sun-thermometer-outline"></ha-icon></div>
+      </div>
+    ` : html`
+      <div class="apparent-temp">
+        <div class="apparent">${this.localeTextFeelsLike}&nbsp;${apparent}</div>
         <div class="unit-temp-small"> ${this.getUOM('temperature')}</div>
       </div>
     ` : html``;
@@ -667,8 +694,119 @@ export class PlatinumWeatherCard extends LitElement {
     return sectionHeight;
   }
 
+  // Raw pop/pos values shared by the classic slots and the modern grid
+  private _popText(): string {
+    return this._config.entity_pop && this.hass.states[this._config.entity_pop] !== undefined
+      ? this._config.entity_pop.match('^weather.') === null
+        ? String(Math.round(Number(this.hass.states[this._config.entity_pop].state)))
+        : this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability !== undefined
+          ? String(Math.round(Number(this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability)))
+          : '---'
+      : '---';
+  }
+
+  private _posText(): string {
+    return this._config.entity_pos && this.hass.states[this._config.entity_pos] !== undefined
+      ? this._config.entity_pos.match('^weather.') === null
+        ? this.hass.states[this._config.entity_pos].state
+        : this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation !== undefined
+          ? String(this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation)
+          : '---'
+      : '---';
+  }
+
+  // Modern grid cell for a slot type: icon + small uppercase label over a value.
+  // Returns null for types without a compact mapping (caller falls back to the
+  // classic slot rendering inside the grid).
+  private _modernSlotCell(slotType: string): TemplateResult | null {
+    const cell = (icon: string, label: string, value: string | TemplateResult) => html`
+      <div class="m-slot">
+        <div class="m-slot-label"><ha-icon icon="${icon}"></ha-icon> ${label}</div>
+        <div class="m-slot-value">${value}</div>
+      </div>`;
+    switch (slotType) {
+      case 'forecast_max': {
+        const v = this._overviewMinMaxText('temperature');
+        return cell('mdi:thermometer-high', this.localeTextForecastMax, v !== undefined ? v + '°' : '---');
+      }
+      case 'forecast_min': {
+        const v = this._overviewMinMaxText('templow');
+        return cell('mdi:thermometer-low', this.localeTextForecastMin, v !== undefined ? v + '°' : '---');
+      }
+      case 'wind': {
+        const gust = this._config.entity_wind_gust ? ` (${this.currentWindGust})` : '';
+        const speedUnit = this.getUOM('length') === 'mi' ? 'mph' : `${this.getUOM('length')}/h`;
+        return cell('mdi:weather-windy', 'Wind', `${this.currentWindBearing} ${this.currentWindSpeed}${speedUnit}${gust}`);
+      }
+      case 'humidity':
+        return cell('mdi:water-percent', 'Humidity', `${this.currentHumidity}%`);
+      case 'pop':
+        return cell('mdi:weather-rainy', 'Rain', `${this._popText()}%`);
+      case 'popforecast':
+        return cell('mdi:weather-rainy', 'Rain', `${this._popText()}% · ${this._posText()} ${this.getUOM('precipitation')}`);
+      case 'possible_today':
+        return cell('mdi:weather-rainy', this.localeTextPosToday, `${this._posText()} ${this.getUOM('precipitation')}`);
+      case 'rainfall': {
+        const entity = this._config.entity_rainfall;
+        const v = entity && this.hass.states[entity] !== undefined ? this.hass.states[entity].state : '---';
+        return cell('mdi:weather-rainy', 'Rainfall', `${v} ${this.getUOM('precipitation')}`);
+      }
+      case 'pressure':
+        return cell('mdi:gauge', 'Pressure', `${this.currentPressure} ${this._config.entity_pressure !== undefined && this.hass.states[this._config.entity_pressure]?.attributes.unit_of_measurement !== undefined ? this.hass.states[this._config.entity_pressure].attributes.unit_of_measurement : ''}`);
+      case 'uv_summary': {
+        var uv = this._config.entity_uv_alert_summary && this.hass.states[this._config.entity_uv_alert_summary] !== undefined ? this.hass.states[this._config.entity_uv_alert_summary].state : '---';
+        if (uv !== '---' && !isNaN(Number(uv))) {
+          const uvIndex = Number(uv);
+          uv = uvIndex < 3 ? 'Low' : uvIndex < 6 ? 'Moderate' : uvIndex < 8 ? 'High' : uvIndex < 11 ? 'Very High' : 'Extreme';
+        }
+        return cell('mdi:weather-sunny', this.localeTextUVRating, uv);
+      }
+      case 'fire_danger': {
+        const entity = this._config.entity_fire_danger;
+        return cell('mdi:fire', this.localeTextFireDanger, entity && this.hass.states[entity] !== undefined ? this.hass.states[entity].state : '---');
+      }
+      case 'visibility':
+        return cell('mdi:weather-fog', 'Visibility', `${this.currentVisibility} ${this.getUOM('length')}`);
+      case 'sun_next':
+        return this._config.entity_sun ? cell(this.sunSet.nextIcon, this.sunSet.nextIcon.includes('down') ? 'Sunset' : 'Sunrise', this.sunSet.nextText) : null;
+      case 'sun_following':
+        return this._config.entity_sun ? cell(this.sunSet.followingIcon, this.sunSet.followingIcon.includes('down') ? 'Sunset' : 'Sunrise', this.sunSet.followingText) : null;
+    }
+    return null;
+  }
+
+  private _renderModernSlotsSection(): TemplateResult {
+    const defaults = {
+      slot_l1: 'forecast_max', slot_l2: 'forecast_min', slot_l3: 'wind', slot_l4: 'pressure', slot_l5: 'sun_next',
+      slot_r1: 'popforecast', slot_r2: 'humidity', slot_r3: 'uv_summary', slot_r4: 'fire_danger', slot_r5: 'sun_following',
+    };
+    const cells: TemplateResult[] = [];
+    for (const key of ['slot_l1', 'slot_l2', 'slot_l3', 'slot_l4', 'slot_l5', 'slot_l6', 'slot_l7', 'slot_l8',
+      'slot_r1', 'slot_r2', 'slot_r3', 'slot_r4', 'slot_r5', 'slot_r6', 'slot_r7', 'slot_r8']) {
+      const slotType = this._config[key] || defaults[key] || 'remove';
+      if (slotType === 'remove' || slotType === 'empty') {
+        continue;
+      }
+      const modern = this._modernSlotCell(slotType);
+      // Types without a compact mapping keep their classic rendering inside a cell
+      cells.push(modern ?? html`<ul class="m-slot-classic">${this.slotValue('', slotType)}</ul>`);
+    }
+    if (cells.length === 0) {
+      return html``;
+    }
+    return html`
+      <div class="slot-section section">
+        <div class="modern-slots">${cells}</div>
+      </div>
+    `;
+  }
+
   private _renderSlotsSection(): TemplateResult {
     if (this._config?.show_section_slots === false) return html``;
+
+    if (this._config.option_modern_layout === true) {
+      return this._renderModernSlotsSection();
+    }
 
     var slot_section = (this._config.use_old_column_format === true) ? html`
       <div>
@@ -2590,10 +2728,61 @@ export class PlatinumWeatherCard extends LitElement {
       .apparent-icon {
         display: inline-flex;
         vertical-align: middle;
-        margin-right: 2px;
-        margin-top: -3px;
         color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
         --mdc-icon-size: 22px;
+      }
+      .apparent-icon-cell {
+        display: table-cell;
+        vertical-align: middle;
+        padding-left: 5px;
+      }
+      .top-left-auto {
+        height: auto;
+      }
+      .condition-left {
+        font-size: 17px;
+        line-height: 1.3;
+        margin-top: 2px;
+        color: var(--primary-text-color);
+      }
+      .modern-slots {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 10px 14px;
+        background: rgba(var(--rgb-primary-text-color, 128, 128, 128), 0.05);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .m-slot {
+        flex: 0 0 auto;
+      }
+      .m-slot-label {
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-weight: 500;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+      }
+      .m-slot-label ha-icon {
+        --mdc-icon-size: 12px;
+        display: inline-flex;
+        vertical-align: middle;
+        margin: -2px 1px 0 0;
+        color: var(--state-icon-color, var(--paper-item-icon-color, #44739e));
+      }
+      .m-slot-value {
+        font-size: 13px;
+        margin-top: 1px;
+        white-space: nowrap;
+        color: var(--primary-text-color);
+      }
+      .m-slot-classic {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        font-weight: 300;
       }
       .currentTemps .unit-temp-small {
         font-size: 12.6px;

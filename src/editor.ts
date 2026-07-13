@@ -272,6 +272,10 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     return this._config?.option_apparent_temp_icon === true; // default off
   }
 
+  get _option_modern_layout(): boolean {
+    return this._config?.option_modern_layout === true; // default off
+  }
+
   get _entity_extended(): string {
     return this._config?.entity_extended || '';
   }
@@ -1059,7 +1063,13 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
             </ha-switch>
           </ha-formfield>
         </div>
-        <div></div>
+        <div>
+          <ha-formfield .label=${'Modern layout (overview + slots)'}>
+            <ha-switch .checked=${this._option_modern_layout !== false} .configValue=${'option_modern_layout'}
+              @change=${this._valueChanged}>
+            </ha-switch>
+          </ha-formfield>
+        </div>
       </div>
     `;
   }
