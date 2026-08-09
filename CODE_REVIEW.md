@@ -99,7 +99,7 @@ Animated SVGs preserve the card's established appearance, so this review did not
 
 ### P3 — release/documentation cleanup
 
-- Package and runtime versions intentionally remain `1.1.7`; choose the next release version and update `package.json`, `package-lock.json`, and `src/const.ts` together before publishing.
+- Package and runtime versions are synchronized at `1.2.0`; the release workflow rejects tags that do not match `package.json`, `package-lock.json`, and `src/const.ts`.
 - Re-enable HACS validation after confirming the fork/repository metadata and release asset policy.
 - Audit inherited upstream image/support links and stale icon documentation separately; they were not changed without an explicit ownership decision.
 - The Prettier configuration now loads, but a repository-wide format check still reports inherited files. Keep that mechanical rewrite separate so it does not obscure this functional review.
