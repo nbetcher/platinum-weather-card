@@ -4,8 +4,8 @@ A highly configurable weather card with a graphical configuration.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
 [![GitHub Release][releases-shield]][releases]
-[![License][license-shield]](LICENSE.md)
-![Maintenance](https://img.shields.io/maintenance/yes/2024?style=for-the-badge)
+[![License][license-shield]](LICENSE)
+![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 
 # Support
 
@@ -64,6 +64,22 @@ Rather than putting everything in one gigantic card it is possible to create a f
 As mentioned above this new card allows you to enable/disable/reorder the sections. These are the sections currently available (we are thinking about adding more).
 
 On the cards main configuration dialog, use the switch to completely remove a section if it is not required. This will result in that section taking up absolutely no space on the card. Use the up/down buttons to reorder the sections as desired. The Global Options contains settings that have an effect on multiple sections.
+
+## Clock Section
+
+The optional clock section is disabled by default and can be placed anywhere in the card using the same up/down controls as the weather sections. It supports system, 12-hour, and 24-hour time; left, center, or right alignment; and these date presets:
+
+- `none` or the system locale format
+- `MM/dd/yyyy`, `MM/dd/yy`, `dd/MM/yyyy`, or `dd/MM/yy`
+- `yyyy-MM-dd`
+- `DOW, Mon ##`, `DOW, Month ##`, or `DOW, ## Mon`
+- `Mon ##, yyyy`, `Month ##, yyyy`, or `## Mon yyyy`
+
+When seconds are enabled, they appear in a small progress dial stacked above the AM/PM indicator (or alone beside 24-hour time) rather than adding a third colon-separated field. This keeps the primary time easy to scan.
+
+The clock uses an isolated render loop and resamples wall time on every tick. Its one-shot timer aligns itself to each real second or minute boundary, and it resynchronizes after page visibility or `pageshow` changes. This prevents delayed callbacks from accumulating drift during a long-running DashCast session on slower displays such as the Nest Hub Max. It cannot correct a device whose underlying system clock is itself wrong.
+
+Date patterns containing `#` must be quoted when entered directly in YAML, for example `clock_date_format: "DOW, Mon ##"`.
 
 ## Overview Section
 
@@ -204,28 +220,29 @@ The following fields are available.
 
 | Option name      | Type    | Description                                                                        |
 | ---------------- | ------- | ---------------------------------------------------------------------------------- |
-| Show staic icons | Boolean | Turning this on disables the use of animated icons across the entire card          |
-| Time format      | String  | Selects whether to use the system time format or explicitly set 12 or 24 hour mode |
+| Show static icons | Boolean | Turning this on disables the use of animated icons across the entire card          |
+| Time format      | String  | Selects whether timestamps and the clock use the system format or explicitly use 12 or 24 hour mode |
 | Locale           | String  | Specifies a locale to pass into any conversion functions                           |
 
 # Migration from the old card
 
 Migration from the older [Custom Animated Weather Card](https://github.com/DavidFW1960/bom-weather-card) is straight forward. It is recommended that you create a new card rather so that your current cards config is preserved until you are happy with the new cards configuration.
 
-Create a new Platinum Weather Card, switch to the Code Editor (YAML mode) and simply paste in the contents of your existing configuration, making sure to keep the new `type: custom:platinum-weather-card`. At this stage some elements may not appear correctly. Save the card and then edit it again (the editor updates the configuration when opened if it detects an older config and performs some update tasks) and then save it once more.
+Create a new Platinum Weather Card, switch to the Code Editor (YAML mode), and paste in the contents of your existing configuration, making sure to keep the new `type: custom:platinum-weather-card`. Legacy keys are normalized immediately by both the card runtime and the graphical editor. In storage-mode dashboards, opening the editor persists that normalized configuration on the next save; YAML-managed dashboards remain under your control and are not rewritten automatically.
 
 If there are still items that don't look correct you will need to manually adjust those to suit.
 
 # YAML Reference
 
-This reference is here for completeness. All settings can be configured using the GUI so you should not need to refer to this. The options are split into global settings and a section for each of the sections in the card.
+This reference covers the full configuration surface. Common settings are available in the graphical editor; advanced styling, action, and compatibility options may still require YAML. The options are split into global settings and a section for each card section.
 
 ## Global Settings
 
 | Variable                    | Type    | Default                                                         | Description                                                         |
 | --------------------------- | ------- | --------------------------------------------------------------- | ------------------------------------------------------------------- |
 | type                        | String  | null                                                            | Must be `custom:platinum-weather-card`                              |
-| section_order               | List    | `- overview`<br>`- extended`<br>`- slots`<br>`- daily_forecast` | Specifies the order in which the sections are displayed on the card |
+| section_order               | List    | `- clock`<br>`- overview`<br>`- extended`<br>`- slots`<br>`- daily_forecast` | Specifies the order in which the sections are displayed on the card |
+| show_section_clock          | Boolean | `false`                                                         | Specifies if the clock section is visible                           |
 | show_section_overview       | Boolean | `true`                                                          | Specifies if the overview section is visible                        |
 | show_section_extended       | Boolean | `true`                                                          | Specifies if the extended section is visible                        |
 | show_section_slots          | Boolean | `true`                                                          | Specifies if the slots section is visible                           |
@@ -236,6 +253,10 @@ This reference is here for completeness. All settings can be configured using th
 | option_time_format          | String  | `system`                                                        | Can be one of `system`, `12hour` or `24hour`                        |
 | option_locale               | String  | none                                                            | The locale to use when formatting timestamps                        |
 | text_update_time_prefix     | String  | none                                                            | Specifies a string to prepend to the update time                    |
+| clock_time_format           | String  | global setting                                                  | Optional clock override: `system`, `12hour`, or `24hour`            |
+| clock_date_format           | String  | `DOW, Mon ##`                                                   | Clock date preset; quote values containing `#` in YAML              |
+| clock_show_seconds          | Boolean | `false`                                                         | Shows seconds in the compact progress dial                          |
+| clock_alignment             | String  | `right`                                                         | Can be `left`, `center`, or `right`                                 |
 
 ## Overview Settings
 

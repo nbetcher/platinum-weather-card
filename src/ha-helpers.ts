@@ -196,7 +196,7 @@ export const toggleEntity = (hass: HomeAssistant, entityId: string): void => {
 
   switch (stateDomain) {
     case 'lock':
-      service = turnOn ? 'lock' : 'unlock';
+      service = hass.states[entityId]?.state === 'locked' ? 'unlock' : 'lock';
       break;
     case 'cover':
       service = turnOn ? 'open_cover' : 'close_cover';

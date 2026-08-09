@@ -3,12 +3,52 @@
 import { LitElement, html, TemplateResult, css, PropertyValues, CSSResult, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceCardEditor, ActionHandlerEvent } from './ha-types.js';
-import { getLovelace, debounce, hasAction, handleAction } from './ha-helpers.js';
+import { debounce, hasAction, handleAction } from './ha-helpers.js';
 import { getLocale } from './helpers';
 import { entityComputeStateDisplay, stringComputeStateDisplay } from './compute_state_display';
-import type { timeFormat, WeatherCardConfig } from './types';
+import type { clockAlignment, clockDateFormat, timeFormat, WeatherCardConfig } from './types';
+import { normalizeWeatherCardConfig } from './config.js';
+import { formatFiniteNumber, toFiniteNumber } from './number-format.js';
 import { actionHandler } from './action-handler-directive';
 import { CARD_VERSION } from './const';
+import './clock.js';
+
+const safeCssValue = (propertyName: string, value: unknown, fallback: string): string => {
+  const candidate = typeof value === 'string' ? value.trim() : String(value ?? '').trim();
+  return candidate !== '' && typeof CSS !== 'undefined' && CSS.supports(propertyName, candidate)
+    ? candidate
+    : fallback;
+};
+
+const safeCssColor = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const candidate = value.trim();
+  return candidate !== '' && typeof CSS !== 'undefined' && CSS.supports('color', candidate)
+    ? candidate
+    : undefined;
+};
+
+const fireDangerStyle = (attributes: Record<string, any>, extra = ''): string => {
+  const background = safeCssColor(attributes.color_fill);
+  if (!background) {
+    return '';
+  }
+  const foreground = safeCssColor(attributes.color_text);
+  return `background-color:${background};${foreground ? `color:${foreground};` : ''}${extra}`;
+};
+
+const WIND_DIRECTIONS = {
+  en: ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'],
+  fr: ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO', 'N'],
+  de: ['N', 'NNO', 'NO', 'ONO', 'O', 'OSO', 'SO', 'SSO', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'],
+  nl: ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW', 'N'],
+  he: ['צפון', 'צ-צ-מז', 'צפון מזרח', 'מז-צ-מז', 'מזרח', 'מז-ד-מז', 'דרום מזרח', 'ד-ד-מז', 'דרום', 'ד-ד-מע', 'דרום מערב', 'מע-ד-מע', 'מערב', 'מע-צ-מע', 'צפון מערב', 'צ-צ-מע', 'צפון'],
+  da: ['N', 'NNØ', 'NØ', 'ØNØ', 'Ø', 'ØSØ', 'SØ', 'SSØ', 'S', 'SSV', 'SV', 'VSV', 'V', 'VNV', 'NV', 'NNV', 'N'],
+  ru: ['С', 'ССВ', 'СВ', 'ВСВ', 'В', 'ВЮВ', 'ЮВ', 'ЮЮВ', 'Ю', 'ЮЮЗ', 'ЮЗ', 'ЗЮЗ', 'З', 'ЗСЗ', 'СЗ', 'ССЗ', 'С'],
+  bg: ['С', 'ССИ', 'СИ', 'ИСИ', 'И', 'ИЮИ', 'ЮИ', 'ЮЮИ', 'Ю', 'ЮЮЗ', 'ЮЗ', 'ЗЮЗ', 'З', 'ЗСЗ', 'СЗ', 'ССЗ', 'С'],
+} as const;
 
 /* eslint no-console: 0 */
 console.info(
@@ -45,7 +85,7 @@ export class PlatinumWeatherCard extends LitElement {
 
   private _resizeObserver!: ResizeObserver;
 
-  @state() private _cardWidth = 492;
+  @state() private _wideLayout = true;
 
   private _error: string[] = [];
 
@@ -61,6 +101,18 @@ export class PlatinumWeatherCard extends LitElement {
   // Set when a subscription attempt fails, so a later update can retry
   // instead of latching the failure for the life of the card
   private _forecastSubFailedAt = 0;
+
+  // Entity dependencies are normalized once per config change so the frequent
+  // Home Assistant state updates do not rescan the full configuration object.
+  private _trackedEntityIds = new Set<string>();
+
+  private _locale: string | undefined;
+
+  private _iconUrlCache = new Map<string, string>();
+
+  // Forecast arrays are replaced when HA publishes a new event, making a
+  // WeakMap a natural cache for their parsed day index.
+  private _forecastByDayCache = new WeakMap<any[], Map<string, any[]>>();
 
   // Config keys that may reference a weather domain entity whose forecast data is consumed
   private static readonly forecastConfigKeys = [
@@ -175,9 +227,15 @@ export class PlatinumWeatherCard extends LitElement {
   // Nest Hub) cache SVGs aggressively by filename, so the card version rides
   // along as a query parameter
   private _iconUrl(iconName: string): string {
+    const cached = this._iconUrlCache.get(iconName);
+    if (cached) {
+      return cached;
+    }
     const url = new URL(iconName + '.svg', import.meta.url);
     url.searchParams.set('v', CARD_VERSION);
-    return url.href;
+    const href = url.href;
+    this._iconUrlCache.set(iconName, href);
+    return href;
   }
 
   public getCardSize(): number {
@@ -190,6 +248,7 @@ export class PlatinumWeatherCard extends LitElement {
     // console.info(`Tempate Test Number:${entityComputeStateDisplay(this.hass.localize, this.hass.states['sensor.template_test_number'], getLocale(this.hass))}`);
 
     // Get the heights of each section
+    const clockSectionHeight = this._getCardSizeClockSection();
     const overiewSectionHeight = this._getCardSizeOverviewSection();
     const extendedSectionHeight = this._getCardSizeExtendedSection();
     const slotsSectionHeight = this._getCardSizeSlotsSection();
@@ -197,7 +256,7 @@ export class PlatinumWeatherCard extends LitElement {
 
     // Estimate the card height in pixels
     // Start with the value of the top/bottom borders (minimum card height) and add all the section heights
-    const cardHeight = 16 + overiewSectionHeight + extendedSectionHeight + slotsSectionHeight + dailyForecastSectionHeight;
+    const cardHeight = 16 + clockSectionHeight + overiewSectionHeight + extendedSectionHeight + slotsSectionHeight + dailyForecastSectionHeight;
 
     // Now calculate an estimated cardsize
     const cardSize = Math.ceil(cardHeight / 50);
@@ -209,19 +268,59 @@ export class PlatinumWeatherCard extends LitElement {
 
   // https://lit.dev/docs/components/properties/#accessors-custom
   public setConfig(config: WeatherCardConfig): void {
-    // TODO Check for required fields and that they are of the proper format
     if (!config) {
       throw new Error('Invalid configuration');
     }
 
-    if (config.test_gui) {
-      getLovelace()?.setEditMode(true);
+    this._config = normalizeWeatherCardConfig(config);
+    this._locale = this._normalizeLocale(this._config.option_locale);
+    this._refreshTrackedEntities();
+  }
+
+  private _normalizeLocale(locale: string | undefined): string | undefined {
+    if (!locale) {
+      return undefined;
+    }
+    try {
+      return Intl.NumberFormat(locale).resolvedOptions().locale;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private _refreshTrackedEntities(): void {
+    const entities = new Set<string>();
+    for (const [key, value] of Object.entries(this._config)) {
+      if (typeof value === 'string' &&
+        (key.startsWith('entity_') || /^custom[1-4]_value$/.test(key))) {
+        entities.add(value);
+      }
     }
 
-    this._config = {
-      name: 'Weather',
-      ...config,
-    };
+    const days = this._config.daily_forecast_days ?? 5;
+    for (const key of [
+      'entity_forecast_icon_1',
+      'entity_summary_1',
+      'entity_forecast_min_1',
+      'entity_forecast_max_1',
+      'entity_pop_1',
+      'entity_pos_1',
+      'entity_extended_1',
+      'entity_fire_danger_1',
+    ]) {
+      const baseEntity = this._config[key];
+      if (typeof baseEntity !== 'string' || baseEntity.startsWith('weather.')) {
+        continue;
+      }
+      const start = baseEntity.match(/(\d+)(?!.*\d)/)?.[0];
+      if (!start) {
+        continue;
+      }
+      for (let index = 1; index < days; index++) {
+        entities.add(baseEntity.replace(/(\d+)(?!.*\d)/, String(Number(start) + index)));
+      }
+    }
+    this._trackedEntityIds = entities;
   }
 
   // https://lit.dev/docs/components/lifecycle/#reactive-update-cycle-performing
@@ -230,55 +329,46 @@ export class PlatinumWeatherCard extends LitElement {
       return false;
     }
 
-    const oldHass = changedProps.get("hass") as HomeAssistant || undefined;
+    // Internal reactive changes (forecast subscription data, config, or the
+    // responsive breakpoint) must never be suppressed by a simultaneous HA
+    // update.
+    if (changedProps.has('_config') || changedProps.has('_forecasts') || changedProps.has('_wideLayout')) {
+      return true;
+    }
+
+    // If hass itself did not change, another internal property requested this
+    // update and should be allowed through.
+    if (!changedProps.has('hass')) {
+      return true;
+    }
+
+    const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
 
     if (
       !oldHass ||
       oldHass.themes !== this.hass.themes ||
-      oldHass.locale !== this.hass.locale
+      oldHass.locale !== this.hass.locale ||
+      oldHass.config !== this.hass.config ||
+      oldHass.language !== this.hass.language ||
+      oldHass.localize !== this.hass.localize ||
+      oldHass.connected !== this.hass.connected ||
+      oldHass.connection !== this.hass.connection
     ) {
       return true;
     }
 
-    // Check if any entities mentioned in the config have changed
-    if (Object.keys(this._config).every(entity => {
-      if (entity.match(/^entity_/) !== null) {
-        if (oldHass.states[this._config[entity]] !== this.hass.states[this._config[entity]]) {
-          return false;
-        }
-      }
-      return true;
-    }) === false) {
-      return true;
-    }
-
-    // check if any of the calculated forecast entities have changed, but only if the daily slot is shown
-    if (this._config.show_section_daily_forecast) {
-      const days = this._config.daily_forecast_days || 5;
-      for (const entity of ['entity_forecast_icon_1', 'entity_summary_1', 'entity_forecast_min_1', 'entity_forecast_max_1', 'entity_pop_1', 'entity_pos_1']) {
-        if ((this._config[entity] !== undefined) && (this._config[entity].match('^weather.') === null)) {
-          // check there is a number in the name
-          const start = this._config[entity].match(/(\d+)(?!.*\d)/g);
-          if (start) {
-            // has a number so now check all the extra entities exist
-            for (var _i = 1; _i < days; _i++) {
-              const newEntity = this._config[entity].replace(/(\d+)(?!.*\d)/g, Number(start) + _i);
-              if (oldHass.states[newEntity] !== this.hass.states[newEntity]) {
-                return true;
-              }
-            }
-          }
-        }
+    for (const entityId of this._trackedEntityIds) {
+      if (oldHass.states[entityId] !== this.hass.states[entityId]) {
+        return true;
       }
     }
 
-    return changedProps.has('config');
+    return false;
   }
 
   protected firstUpdated(): void {
     this._resize();
     this._attachObserver();
-    // console.info(`Initial cardwdith = ${this._cardWidth}`);
   }
 
   private _attachObserver() {
@@ -304,8 +394,7 @@ export class PlatinumWeatherCard extends LitElement {
 
     const card = this.shadowRoot?.querySelector('ha-card');
     if (!card) return;
-    this._cardWidth = card.getBoundingClientRect().width;
-    // console.info(`Resize cardwdith = ${this._cardWidth}`);
+    this._wideLayout = card.getBoundingClientRect().width >= 344;
   }
 
   private _checkForErrors(): boolean {
@@ -406,6 +495,42 @@ export class PlatinumWeatherCard extends LitElement {
     return html`---`;
   }
 
+  private _getCardSizeClockSection(): number {
+    if (this._config.show_section_clock !== true) {
+      return 0;
+    }
+    return this._config.clock_date_format === 'none' ? 58 : 76;
+  }
+
+  private _renderClockSection(): TemplateResult {
+    if (this._config.show_section_clock !== true) {
+      return html``;
+    }
+
+    const configuredAlignment = this._config.clock_alignment;
+    const alignment: clockAlignment = configuredAlignment === 'left' || configuredAlignment === 'center'
+      ? configuredAlignment
+      : 'right';
+    const dateFormat: clockDateFormat = this._config.clock_date_format ?? 'DOW, Mon ##';
+    const locale = this.locale ?? this.hass.locale?.language ?? this.hass.language ?? navigator.language;
+    const timeZone = this.hass.locale?.time_zone === 'server'
+      ? this.hass.config.time_zone
+      : undefined;
+
+    return html`
+      <div class="clock-section section clock-${alignment}${this._config.option_modern_layout === true ? ' clock-modern' : ''}">
+        <platinum-weather-clock
+          .timeFormat=${this._config.clock_time_format ?? this.timeFormat}
+          .systemTimeFormat=${this.hass.locale?.time_format}
+          .dateFormat=${dateFormat}
+          .locale=${locale}
+          .timeZone=${timeZone}
+          .showSeconds=${this._config.clock_show_seconds === true}
+        ></platinum-weather-clock>
+      </div>
+    `;
+  }
+
   // Feels-like row shared by the overview layouts
   private get _apparentTempBlock(): TemplateResult {
     const apparent = this.currentApparentTemperature;
@@ -469,12 +594,12 @@ export class PlatinumWeatherCard extends LitElement {
       const maxRaw = this._overviewMinMaxRaw('temperature');
       const currentRaw = this._config.entity_temperature && this.hass.states[this._config.entity_temperature] !== undefined
         ? this._config.entity_temperature.match('^weather.') === null
-          ? Number(this.hass.states[this._config.entity_temperature].state)
-          : Number(this.hass.states[this._config.entity_temperature].attributes.temperature)
-        : NaN;
+          ? toFiniteNumber(this.hass.states[this._config.entity_temperature].state)
+          : toFiniteNumber(this.hass.states[this._config.entity_temperature].attributes.temperature)
+        : undefined;
       // An equal or inverted min/max range is meaningless - park the marker
       // in the middle instead of pinning it to an endpoint
-      const pct = minRaw !== undefined && maxRaw !== undefined && !isNaN(currentRaw) && maxRaw > minRaw
+      const pct = minRaw !== undefined && maxRaw !== undefined && currentRaw !== undefined && maxRaw > minRaw
         ? Math.max(0, Math.min(100, Math.round(((currentRaw - minRaw) / (maxRaw - minRaw)) * 100)))
         : 50;
       rangeBar = html`
@@ -552,7 +677,7 @@ export class PlatinumWeatherCard extends LitElement {
       ? this.hass.states[entityCfg].state
       : this._weatherForecast(entityCfg)?.[0]?.[prop];
     // Guard null and '' explicitly - Number() coerces both to 0
-    return raw !== undefined && raw !== null && String(raw).trim() !== '' && !isNaN(Number(raw)) ? Number(raw) : undefined;
+    return toFiniteNumber(raw);
   }
 
   private _overviewMinMaxText(prop: 'temperature' | 'templow'): string | undefined {
@@ -567,7 +692,7 @@ export class PlatinumWeatherCard extends LitElement {
   private _renderObservationsOverviewSection(): TemplateResult {
     if (this._config?.show_section_overview === false) return html``;
 
-    const stack = (this._cardWidth >= 344) ? ' stacked' : '';
+    const stack = this._wideLayout ? ' stacked' : '';
 
     const currentTemp = html`
       <div class="current-temp">
@@ -765,7 +890,7 @@ export class PlatinumWeatherCard extends LitElement {
         ? this.hass.states[this._config.entity_pop].state
         : this._weatherForecast(this._config.entity_pop)?.[0]?.precipitation_probability
       : undefined;
-    return raw !== undefined && raw !== null && String(raw).trim() !== '' && !isNaN(Number(raw)) ? String(Math.round(Number(raw))) : '---';
+    return formatFiniteNumber(raw, this.locale);
   }
 
   private _posText(): string {
@@ -774,7 +899,7 @@ export class PlatinumWeatherCard extends LitElement {
         ? this.hass.states[this._config.entity_pos].state
         : this._weatherForecast(this._config.entity_pos)?.[0]?.precipitation
       : undefined;
-    return raw !== undefined && raw !== null && String(raw).trim() !== '' && !isNaN(Number(raw)) ? String(raw) : '---';
+    return toFiniteNumber(raw) === undefined ? '---' : String(raw).trim();
   }
 
   // Converts the UV alert entity's state to display text - numeric states
@@ -786,8 +911,8 @@ export class PlatinumWeatherCard extends LitElement {
         ? this.hass.states[this._config.entity_uv_alert_summary].state
         : 'Not Applicable'
       : '---';
-    if (uv !== '---' && uv.trim() !== '' && !isNaN(Number(uv))) {
-      const uvIndex = Number(uv);
+    const uvIndex = toFiniteNumber(uv);
+    if (uvIndex !== undefined) {
       uv = uvIndex < 3 ? 'Low' : uvIndex < 6 ? 'Moderate' : uvIndex < 8 ? 'High' : uvIndex < 11 ? 'Very High' : 'Extreme';
     }
     return uv;
@@ -867,8 +992,8 @@ export class PlatinumWeatherCard extends LitElement {
         const state = this.hass.states[entity].state;
         const fire = state !== 'unknown' ? state : 'Not Applicable';
         const attrs = this.hass.states[entity].attributes;
-        const fireStyle = this._config.option_color_fire_danger !== false && attrs.color_fill
-          ? `background-color:${attrs.color_fill}; color:${attrs.color_text}; padding: 0 4px; border-radius: 3px;`
+        const fireStyle = this._config.option_color_fire_danger !== false
+          ? fireDangerStyle(attrs, 'padding:0 4px;border-radius:3px;')
           : '';
         return cell('mdi:fire', this.localeTextFireDanger,
           fireStyle !== '' ? html`<span style="${fireStyle}">${fire.toLocaleUpperCase()}</span>` : fire);
@@ -994,13 +1119,13 @@ export class PlatinumWeatherCard extends LitElement {
         maxTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_max_1), forecastDate, 'temperature');
       } else {
         start = this._config.entity_forecast_max_1 ? this._config.entity_forecast_max_1.match(/(\d+)(?!.*\d)/g) : false;
-        maxTemp = start && this._config.entity_forecast_max_1 ? this.hass.states[this._config.entity_forecast_max_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
+        maxTemp = start && this._config.entity_forecast_max_1 ? this.hass.states[this._config.entity_forecast_max_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))]?.state : undefined;
       }
       if (this._config.entity_forecast_min_1?.match('^weather.')) {
         minTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_min_1), forecastDate, 'templow');
       } else {
         start = this._config.entity_forecast_min_1 ? this._config.entity_forecast_min_1.match(/(\d+)(?!.*\d)/g) : false;
-        minTemp = start && this._config.entity_forecast_min_1 ? this.hass.states[this._config.entity_forecast_min_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
+        minTemp = start && this._config.entity_forecast_min_1 ? this.hass.states[this._config.entity_forecast_min_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))]?.state : undefined;
       }
       const tempUnit = html`<div class="unit-temp-small">${this.getUOM("temperature")}</div>`;
       const minMax = this._config.old_daily_format === true
@@ -1008,13 +1133,13 @@ export class PlatinumWeatherCard extends LitElement {
         html`
           <li class="f-slot-horiz-text">
             <span>
-              <div class="slot-text highTemp">${maxTemp ? Math.round(Number(maxTemp)) : '---'}</div>
+              <div class="slot-text highTemp">${formatFiniteNumber(maxTemp, this.locale)}</div>
               ${tempUnit}
             </span>
           </li>
           <li class="f-slot-horiz-text">
             <span>
-              <div class="slot-text lowTemp">${minTemp ? Math.round(Number(minTemp)) : '---'}</div>
+              <div class="slot-text lowTemp">${formatFiniteNumber(minTemp, this.locale)}</div>
               ${tempUnit}
             </span>
           </li>`
@@ -1024,9 +1149,9 @@ export class PlatinumWeatherCard extends LitElement {
           html`
             <li class="f-slot-horiz-text">
               <span>
-                <div class="slot-text highTemp">${maxTemp ? Math.round(Number(maxTemp)) : "---"}</div>
+                <div class="slot-text highTemp">${formatFiniteNumber(maxTemp, this.locale)}</div>
                 <div class="slot-text slash">/</div>
-                <div class="slot-text lowTemp">${minTemp ? Math.round(Number(minTemp)) : "---"}</div>
+                <div class="slot-text lowTemp">${formatFiniteNumber(minTemp, this.locale)}</div>
                 ${tempUnit}
               </span>
             </li>`
@@ -1034,9 +1159,9 @@ export class PlatinumWeatherCard extends LitElement {
           html`
             <li class="f-slot-horiz-text">
               <span>
-                <div class="slot-text lowTemp">${minTemp ? Math.round(Number(minTemp)) : "---"}</div>
+                <div class="slot-text lowTemp">${formatFiniteNumber(minTemp, this.locale)}</div>
                 <div class="slot-text slash">/</div>
-                <div class="slot-text highTemp">${maxTemp ? Math.round(Number(maxTemp)) : "---"}</div>
+                <div class="slot-text highTemp">${formatFiniteNumber(maxTemp, this.locale)}</div>
                 ${tempUnit}
               </span>
             </li>
@@ -1044,15 +1169,15 @@ export class PlatinumWeatherCard extends LitElement {
 
       var pop: TemplateResult;
       var pos: TemplateResult;
-      var tooltip: TemplateResult;
+      var tooltip: TemplateResult = html``;
       if (this._config.entity_pop_1?.match('^weather.')) {
         const popEntity = this._config.entity_pop_1;
         const popData = this._getForecastPropFromWeather(this._weatherForecast(popEntity), forecastDate, 'precipitation_probability');
-        pop = popEntity ? html`<li class="f-slot-horiz-text"><span><div class="slot-text pop">${this.hass.states[popEntity] && popData !== undefined ? Math.round(Number(popData)) : "---"}</div><div class="unit">%</div></span></li>` : html``;
+        pop = popEntity ? html`<li class="f-slot-horiz-text"><span><div class="slot-text pop">${this.hass.states[popEntity] ? formatFiniteNumber(popData, this.locale) : '---'}</div><div class="unit">%</div></span></li>` : html``;
       } else {
         start = this._config.entity_pop_1 ? this._config.entity_pop_1.match(/(\d+)(?!.*\d)/g) : false;
         const popEntity = start && this._config.entity_pop_1 ? this._config.entity_pop_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i)) : undefined;
-        pop = start ? html`<li class="f-slot-horiz-text"><span><div class="slot-text pop">${popEntity && this.hass.states[popEntity] ? Math.round(Number(this.hass.states[popEntity].state)) : "---"}</div><div class="unit">%</div></span></li>` : html``;
+        pop = start ? html`<li class="f-slot-horiz-text"><span><div class="slot-text pop">${popEntity && this.hass.states[popEntity] ? formatFiniteNumber(this.hass.states[popEntity].state, this.locale) : '---'}</div><div class="unit">%</div></span></li>` : html``;
       }
       if (this._config.entity_pos_1?.match('^weather.')) {
         const posEntity = this._config.entity_pos_1;
@@ -1063,18 +1188,20 @@ export class PlatinumWeatherCard extends LitElement {
         const posEntity = start && this._config.entity_pos_1 ? this._config.entity_pos_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i)) : undefined;
         pos = start ? html`<li class="f-slot-horiz-text"><span><div class="pos">${posEntity && this.hass.states[posEntity] ? this.hass.states[posEntity].state : "---"}</div><div class="unit">${this.getUOM('precipitation')}</div></span></li>` : html``;
       }
-      if (this._config.entity_summary_1?.match('^weather.')) {
-        const tooltipEntity = this._config.entity_summary_1;
-        const tooltipData = this._getForecastPropFromWeather(this._weatherForecast(tooltipEntity), forecastDate, 'detailed_description') ?? this._getForecastPropFromWeather(this._weatherForecast(tooltipEntity), forecastDate, 'condition');
-        tooltip = html`<div class="fcasttooltipblock" id="fcast-summary-${i}" style="width:${days * 100}%;left:-${i * 100}%;"><div class="fcasttooltiptext">${this.hass.states[tooltipEntity] && tooltipData !== undefined ? stringComputeStateDisplay(this.hass.localize, tooltipData) : "---"}</div>
-            <span style="content:'';position:absolute;top:100%;left:${(100 / days / 2) + i * (100 / days)}%;margin-left:-7.5px;border-width:7.5px;border-style:solid;border-color:#FFA100 transparent transparent transparent;"></span>
-          </div>`;
-      } else {
-        start = this._config.entity_summary_1 ? this._config.entity_summary_1.match(/(\d+)(?!.*\d)/g) : false;
-        const tooltipEntity = start && this._config.entity_summary_1 ? this._config.entity_summary_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i)) : undefined;
-        tooltip = html`<div class="fcasttooltipblock" id="fcast-summary-${i}" style="width:${days * 100}%;left:-${i * 100}%;"><div class="fcasttooltiptext">${this._config.option_tooltips && tooltipEntity ? this.hass.states[tooltipEntity] ? this.hass.states[tooltipEntity].state : "---" : ""}</div>
-            <span style="content:'';position:absolute;top:100%;left:${(100 / days / 2) + i * (100 / days)}%;margin-left:-7.5px;border-width:7.5px;border-style:solid;border-color:#FFA100 transparent transparent transparent;"></span>
-          </div>`;
+      if (this._config.option_tooltips) {
+        if (this._config.entity_summary_1?.match('^weather.')) {
+          const tooltipEntity = this._config.entity_summary_1;
+          const tooltipData = this._getForecastPropFromWeather(this._weatherForecast(tooltipEntity), forecastDate, 'detailed_description') ?? this._getForecastPropFromWeather(this._weatherForecast(tooltipEntity), forecastDate, 'condition');
+          tooltip = html`<div class="fcasttooltipblock" id="fcast-summary-${i}" style="width:${days * 100}%;left:-${i * 100}%;"><div class="fcasttooltiptext">${this.hass.states[tooltipEntity] && tooltipData !== undefined ? stringComputeStateDisplay(this.hass.localize, tooltipData) : "---"}</div>
+              <span style="content:'';position:absolute;top:100%;left:${(100 / days / 2) + i * (100 / days)}%;margin-left:-7.5px;border-width:7.5px;border-style:solid;border-color:#FFA100 transparent transparent transparent;"></span>
+            </div>`;
+        } else {
+          start = this._config.entity_summary_1 ? this._config.entity_summary_1.match(/(\d+)(?!.*\d)/g) : false;
+          const tooltipEntity = start && this._config.entity_summary_1 ? this._config.entity_summary_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i)) : undefined;
+          tooltip = html`<div class="fcasttooltipblock" id="fcast-summary-${i}" style="width:${days * 100}%;left:-${i * 100}%;"><div class="fcasttooltiptext">${tooltipEntity && this.hass.states[tooltipEntity] ? this.hass.states[tooltipEntity].state : "---"}</div>
+              <span style="content:'';position:absolute;top:100%;left:${(100 / days / 2) + i * (100 / days)}%;margin-left:-7.5px;border-width:7.5px;border-style:solid;border-color:#FFA100 transparent transparent transparent;"></span>
+            </div>`;
+        }
       }
 
       htmlDays.push(html`
@@ -1140,36 +1267,38 @@ export class PlatinumWeatherCard extends LitElement {
         maxTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_max_1), forecastDate, 'temperature');
       } else {
         start = this._config.entity_forecast_max_1 ? this._config.entity_forecast_max_1.match(/(\d+)(?!.*\d)/g) : false;
-        maxTemp = start && this._config.entity_forecast_max_1 ? this.hass.states[this._config.entity_forecast_max_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
+        maxTemp = start && this._config.entity_forecast_max_1 ? this.hass.states[this._config.entity_forecast_max_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))]?.state : undefined;
       }
       if (this._config.entity_forecast_min_1?.match('^weather.')) {
         minTemp = this._getForecastPropFromWeather(this._weatherForecast(this._config.entity_forecast_min_1), forecastDate, 'templow');
       } else {
         start = this._config.entity_forecast_min_1 ? this._config.entity_forecast_min_1.match(/(\d+)(?!.*\d)/g) : false;
-        minTemp = start && this._config.entity_forecast_min_1 ? this.hass.states[this._config.entity_forecast_min_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))].state : undefined;
+        minTemp = start && this._config.entity_forecast_min_1 ? this.hass.states[this._config.entity_forecast_min_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i))]?.state : undefined;
       }
       const tempUnit = html`<div class="unit-temp-small">${this.getUOM("temperature")}</div>`;
-      const min = minTemp ? html`
+      const minValue = toFiniteNumber(minTemp);
+      const maxValue = toFiniteNumber(maxTemp);
+      const min = minValue !== undefined ? html`
         <div class="f-slot-vert">
           <div class="temp-label">Min: </div>
-          <div class="low-temp">${Math.round(Number(minTemp))}</div>${tempUnit}
+          <div class="low-temp">${formatFiniteNumber(minValue, this.locale)}</div>${tempUnit}
         </div>` : html`---`;
-      const max = maxTemp ? html`
+      const max = maxValue !== undefined ? html`
         <div class="f-slot-vert">
           <div class="temp-label">Max: </div>
-          <div class="high-temp">${Math.round(Number(maxTemp))}</div>${tempUnit}
+          <div class="high-temp">${formatFiniteNumber(maxValue, this.locale)}</div>${tempUnit}
         </div>` : html`---`;
       if (this._config.entity_pop_1?.match('^weather.')) {
         const popEntity = this._config.entity_pop_1;
         const popData = this._getForecastPropFromWeather(this._weatherForecast(popEntity), forecastDate, 'precipitation_probability');
         pop = popEntity ? html`<div class="f-slot-vert"><div class="f-label">Chance of rain </div>
-        <div class="pop">${this.hass.states[popEntity] && popData !== undefined ? Math.round(Number(popData)) : "---"}</div><div class="unit">%</div></div>` : html``;
+        <div class="pop">${this.hass.states[popEntity] ? formatFiniteNumber(popData, this.locale) : '---'}</div><div class="unit">%</div></div>` : html``;
       } else {
         start = this._config.entity_pop_1 ? this._config.entity_pop_1.match(/(\d+)(?!.*\d)/g) : false;
         const popEntity = start && this._config.entity_pop_1 ? this._config.entity_pop_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i)) : undefined;
         pop = start ? html`
           <div class="f-slot-vert"><div class="f-label">Chance of rain </div>
-          <div class="pop">${popEntity && this.hass.states[popEntity] ? Math.round(Number(this.hass.states[popEntity].state)) : "---"}</div><div class="unit">%</div></div>` : html``;
+          <div class="pop">${popEntity && this.hass.states[popEntity] ? formatFiniteNumber(this.hass.states[popEntity].state, this.locale) : '---'}</div><div class="unit">%</div></div>` : html``;
       }
       if (this._config.entity_pos_1?.match('^weather.')) {
         const posEntity = this._config.entity_pos_1;
@@ -1204,8 +1333,10 @@ export class PlatinumWeatherCard extends LitElement {
       start = this._config.entity_fire_danger_1 ? this._config.entity_fire_danger_1.match(/(\d+)(?!.*\d)/g) : false;
       var fireDanger: TemplateResult = html``;
       const fireDangerEntity = start && this._config.entity_fire_danger_1 ? this._config.entity_fire_danger_1.replace(/(\d+)(?!.*\d)/g, String(Number(start) + i)) : undefined;
-      if ((start) && (fireDangerEntity)) {
-        var fireStyle = this._config.option_daily_color_fire_danger !== false && this.hass.states[fireDangerEntity].attributes.color_fill ? `background-color:${this.hass.states[fireDangerEntity].attributes.color_fill}; color:${this.hass.states[fireDangerEntity].attributes.color_text};` : "";
+      if (start && fireDangerEntity && this.hass.states[fireDangerEntity]) {
+        var fireStyle = this._config.option_daily_color_fire_danger !== false
+          ? fireDangerStyle(this.hass.states[fireDangerEntity].attributes)
+          : "";
         if (this._config.option_daily_color_fire_danger === false) {
           fireDanger = start && this.hass.states[fireDangerEntity].state !== 'unknown' ? html`
           <div class="f-firedanger-vert">${fireDangerEntity && this.hass.states[fireDangerEntity] ? this.hass.states[fireDangerEntity].state : "---"}</div>` : html``;
@@ -1260,8 +1391,26 @@ export class PlatinumWeatherCard extends LitElement {
     if (!forecast || !Array.isArray(forecast)) {
       return undefined;
     }
+    let byDay = this._forecastByDayCache.get(forecast);
+    if (!byDay) {
+      byDay = new Map<string, any[]>();
+      for (const entry of forecast) {
+        const forecastDate = new Date(entry?.datetime);
+        if (Number.isNaN(forecastDate.getTime())) {
+          continue;
+        }
+        const key = forecastDate.toDateString();
+        const entries = byDay.get(key);
+        if (entries) {
+          entries.push(entry);
+        } else {
+          byDay.set(key, [entry]);
+        }
+      }
+      this._forecastByDayCache.set(forecast, byDay);
+    }
     const day = date.toDateString();
-    const forecastForThisDay = forecast.filter(o => new Date(o.datetime).toDateString() === day);
+    const forecastForThisDay = byDay.get(day) ?? [];
     if (forecastForThisDay.length === 1) {
       return forecastForThisDay[0][propKey] !== undefined ? String(forecastForThisDay[0][propKey]) : undefined;
     }
@@ -1335,6 +1484,9 @@ export class PlatinumWeatherCard extends LitElement {
     if (this._config.section_order !== undefined) {
       this._config.section_order.forEach(section => {
         switch (section) {
+          case 'clock':
+            sections.push(this._renderClockSection());
+            break;
           case 'overview':
             sections.push(this._renderOverviewSection());
             break;
@@ -1351,13 +1503,20 @@ export class PlatinumWeatherCard extends LitElement {
       });
     }
 
+    const hasTapAction = hasAction(this._config.tap_action);
+    const hasHoldAction = hasAction(this._config.hold_action);
+    const isInteractive = hasTapAction || hasHoldAction;
+
     htmlCode.push(html`
       <style>
         ${this.styles}
       </style>
       <ha-card class="card"
+        role=${isInteractive ? 'button' : 'presentation'}
+        tabindex=${isInteractive ? '0' : '-1'}
+        aria-label=${isInteractive ? this._config.name ?? 'Weather' : ''}
         @action=${this._handleAction}
-        .actionHandler=${actionHandler({ hasHold: hasAction(this._config.hold_action), })}
+        .actionHandler=${actionHandler({ hasHold: hasHoldAction })}
         ><div class="content">
           ${sections}
         </div>
@@ -1570,7 +1729,7 @@ export class PlatinumWeatherCard extends LitElement {
 
   get slotRainfall(): TemplateResult {
     const rainfall = this.currentRainfall;
-    const units = rainfall !== "---" ? html`<div class="slot-text unit"></span>${this.getUOM('precipitation')}</div>` : html``;
+    const units = rainfall !== "---" ? html`<div class="slot-text unit">${this.getUOM('precipitation')}</div>` : html``;
     return html`
       <li>
         <div class="slot">
@@ -1614,7 +1773,9 @@ export class PlatinumWeatherCard extends LitElement {
 
   get slotObservedMax(): TemplateResult {
     const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
-    const temp = this._config.entity_observed_max && this.hass.states[this._config.entity_observed_max] !== undefined ? (Number(this.hass.states[this._config.entity_observed_max].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
+    const temp = this._config.entity_observed_max && this.hass.states[this._config.entity_observed_max]
+      ? formatFiniteNumber(this.hass.states[this._config.entity_observed_max].state, this.locale, digits)
+      : '---';
     const units = temp !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
     return html`
       <li>
@@ -1631,7 +1792,9 @@ export class PlatinumWeatherCard extends LitElement {
 
   get slotObservedMin(): TemplateResult {
     const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
-    const temp = this._config.entity_observed_min && this.hass.states[this._config.entity_observed_min] !== undefined ? (Number(this.hass.states[this._config.entity_observed_min].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
+    const temp = this._config.entity_observed_min && this.hass.states[this._config.entity_observed_min]
+      ? formatFiniteNumber(this.hass.states[this._config.entity_observed_min].state, this.locale, digits)
+      : '---';
     const units = temp !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
     return html`
       <li>
@@ -1681,7 +1844,9 @@ export class PlatinumWeatherCard extends LitElement {
   get slotTempNext(): TemplateResult {
     const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
     const icon = this._config.entity_temp_next_label && this.hass.states[this._config.entity_temp_next_label] !== undefined ? this.hass.states[this._config.entity_temp_next_label].state.toLowerCase().includes("min") || this.hass.states[this._config.entity_temp_next_label].state.toLowerCase().includes("low") ? "mdi:thermometer-low" : "mdi:thermometer-high" : "mdi:help-box";
-    const temp = this._config.entity_temp_next && this.hass.states[this._config.entity_temp_next] !== undefined ? (Number(this.hass.states[this._config.entity_temp_next].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
+    const temp = this._config.entity_temp_next && this.hass.states[this._config.entity_temp_next]
+      ? formatFiniteNumber(this.hass.states[this._config.entity_temp_next].state, this.locale, digits)
+      : '---';
     const label = this._config.entity_temp_next_label && this.hass.states[this._config.entity_temp_next_label] !== undefined ? this.hass.states[this._config.entity_temp_next_label].state : "";
     const units = temp !== "---" ? html`<div class="slot-text unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
     return html`
@@ -1700,7 +1865,9 @@ export class PlatinumWeatherCard extends LitElement {
   get slotTempFollowing(): TemplateResult {
     const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
     const icon = this._config.entity_temp_following_label && this.hass.states[this._config.entity_temp_following_label] !== undefined ? this.hass.states[this._config.entity_temp_following_label].state.toLowerCase().includes("min") || this.hass.states[this._config.entity_temp_following_label].state.toLowerCase().includes("low") ? "mdi:thermometer-low" : "mdi:thermometer-high" : "mdi:help-box";
-    const temp = this._config.entity_temp_following && this.hass.states[this._config.entity_temp_following] !== undefined ? (Number(this.hass.states[this._config.entity_temp_following].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
+    const temp = this._config.entity_temp_following && this.hass.states[this._config.entity_temp_following]
+      ? formatFiniteNumber(this.hass.states[this._config.entity_temp_following].state, this.locale, digits)
+      : '---';
     const label = this._config.entity_temp_following_label && this.hass.states[this._config.entity_temp_following_label] !== undefined ? this.hass.states[this._config.entity_temp_following_label].state : "";
     const units = temp !== "---" ? html`<div class="slot-text unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
     return html`
@@ -1718,8 +1885,10 @@ export class PlatinumWeatherCard extends LitElement {
 
   get slotTempMaximums(): TemplateResult {
     const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
-    const temp_obs = this._config.entity_observed_max && this.hass.states[this._config.entity_observed_max] !== undefined ? (Number(this.hass.states[this._config.entity_observed_max].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
-    const temp_for = this._config.entity_forecast_max && this.hass.states[this._config.entity_forecast_max] !== undefined ? (Number(this.hass.states[this._config.entity_forecast_max].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
+    const temp_obs = this._config.entity_observed_max && this.hass.states[this._config.entity_observed_max]
+      ? formatFiniteNumber(this.hass.states[this._config.entity_observed_max].state, this.locale, digits)
+      : '---';
+    const temp_for = this._overviewMinMaxText('temperature') ?? '---';
     const units = temp_obs !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
     return html`
       <li>
@@ -1739,8 +1908,10 @@ export class PlatinumWeatherCard extends LitElement {
 
   get slotTempMinimums(): TemplateResult {
     const digits = this._config.option_today_temperature_decimals === true ? 1 : 0;
-    const temp_obs = this._config.entity_observed_min && this.hass.states[this._config.entity_observed_min] !== undefined ? (Number(this.hass.states[this._config.entity_observed_min].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
-    const temp_for = this._config.entity_forecast_min && this.hass.states[this._config.entity_forecast_min] !== undefined ? (Number(this.hass.states[this._config.entity_forecast_min].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "---";
+    const temp_obs = this._config.entity_observed_min && this.hass.states[this._config.entity_observed_min]
+      ? formatFiniteNumber(this.hass.states[this._config.entity_observed_min].state, this.locale, digits)
+      : '---';
+    const temp_for = this._overviewMinMaxText('templow') ?? '---';
     const units = temp_obs !== "---" ? html`<div class="unit-temp-small">${this.getUOM('temperature')}</div>` : html``;
     return html`
       <li>
@@ -1775,7 +1946,9 @@ export class PlatinumWeatherCard extends LitElement {
   get slotFireDanger(): TemplateResult {
     const entity = this._config.entity_fire_danger;
     const fire = entity && this.hass.states[entity] !== undefined ? this.hass.states[entity].state !== 'unknown' ? this._config.option_color_fire_danger === false ? this.hass.states[entity].state : this.hass.states[entity].state.toLocaleUpperCase() : "Not Applicable" : "---";
-    var fireStyle = entity && this._config.option_color_fire_danger !== false && this.hass.states[entity].attributes.color_fill ? `background-color:${this.hass.states[entity].attributes.color_fill}; color:${this.hass.states[entity].attributes.color_text};` : "";
+    var fireStyle = entity && this._config.option_color_fire_danger !== false && this.hass.states[entity]
+      ? fireDangerStyle(this.hass.states[entity].attributes)
+      : "";
     if (this._config.option_color_fire_danger === false) {
       return html`
       <li>
@@ -1805,7 +1978,7 @@ export class PlatinumWeatherCard extends LitElement {
   }
 
   get slotWind(): TemplateResult {
-    const beaufort = this._config.entity_wind_speed && this._config.option_show_beaufort ? html`<div class="slot-text"></div>BFT: ${this.currentBeaufort} -&nbsp;</div>` : "";
+    const beaufort = this._config.entity_wind_speed && this._config.option_show_beaufort ? html`<div class="slot-text">BFT: ${this.currentBeaufort}&nbsp;-&nbsp;</div>` : "";
     const bearing = this._config.entity_wind_bearing ? html`<div class="slot-text">${this.currentWindBearing}&nbsp;</div>` : "";
     const units = html`<div class="slot-text unit">${this.getUOM('length')}/h</div>`;
     const speed = this._config.entity_wind_speed ? html`<div class="slot-text">${this.currentWindSpeed}</div>${units}&nbsp;` : "";
@@ -1823,7 +1996,7 @@ export class PlatinumWeatherCard extends LitElement {
   }
 
   get slotWindKt(): TemplateResult {
-    const beaufort = this._config.entity_wind_speed_kt && this._config.option_show_beaufort ? html`<div class="slot-text"></div>BFT: ${this.currentBeaufortKt} -&nbsp;</div>` : "";
+    const beaufort = this._config.entity_wind_speed_kt && this._config.option_show_beaufort ? html`<div class="slot-text">BFT: ${this.currentBeaufortKt}&nbsp;-&nbsp;</div>` : "";
     const bearing = this._config.entity_wind_bearing ? html`<div class="slot-text">${this.currentWindBearing}&nbsp;</div>` : "";
     const units = html`<div class="slot-text unit">Kt</div>`;
     const speed = this._config.entity_wind_speed_kt ? html`<div class="slot-text">${this.currentWindSpeedKt}</div>${units}&nbsp;` : "";
@@ -1930,62 +2103,57 @@ export class PlatinumWeatherCard extends LitElement {
   get currentTemperature(): string {
     const entity = this._config.entity_temperature;
     const digits = this._config.option_show_overview_decimals === true ? 1 : 0;
-    return entity && this.hass.states[entity]
+    const value = entity && this.hass.states[entity]
       ? entity.match('^weather.') === null
-        ? (Number(this.hass.states[entity].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-        : this.hass.states[entity].attributes.temperature !== undefined
-          ? (Number(this.hass.states[entity].attributes.temperature)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-          : '---'
-      : '---';
+        ? this.hass.states[entity].state
+        : this.hass.states[entity].attributes.temperature
+      : undefined;
+    return formatFiniteNumber(value, this.locale, digits);
   }
 
   get currentApparentTemperature(): string {
     const entity = this._config.entity_apparent_temp;
     const digits = this._config.option_show_overview_decimals === true ? 1 : 0;
-    return entity && this.hass.states[entity]
-      ? (Number(this.hass.states[entity].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
-      : '';
+    return formatFiniteNumber(entity && this.hass.states[entity]?.state, this.locale, digits, digits, '');
   }
 
   get currentHumidity(): string {
     const entity = this._config.entity_humidity;
-    return entity && this.hass.states[entity]
+    const value = entity && this.hass.states[entity]
       ? entity.match('^weather.') === null
-        ? (Number(this.hass.states[entity].state)).toLocaleString(this.locale)
-        : this.hass.states[entity].attributes.humidity !== undefined
-          ? (Number(this.hass.states[entity].attributes.humidity)).toLocaleString(this.locale)
-          : '---'
-      : '---';
+        ? this.hass.states[entity].state
+        : this.hass.states[entity].attributes.humidity
+      : undefined;
+    return formatFiniteNumber(value, this.locale, 0, 3);
   }
 
   get currentRainfall(): string {
     const entity = this._config.entity_rainfall;
     const digits = this._config.option_today_rainfall_decimals === true ? 1 : 0;
-    return entity && this.hass.states[entity]
-      ? (Number(this.hass.states[entity].state)).toLocaleString(this.locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '---';
+    return formatFiniteNumber(entity && this.hass.states[entity]?.state, this.locale, digits);
   }
 
   get currentPressure(): string {
     const entity = this._config.entity_pressure;
     var places = this._config.option_pressure_decimals ? Math.max(Math.min(this._config.option_pressure_decimals, 3), 0) : 0;
-    return entity && this.hass.states[entity]
+    const value = entity && this.hass.states[entity]
       ? entity.match('^weather.') === null
-        ? (Number(this.hass.states[entity].state)).toLocaleString(this.locale, { minimumFractionDigits: places, maximumFractionDigits: places })
-        : this.hass.states[entity].attributes.pressure !== undefined
-          ? (Number(this.hass.states[entity].attributes.pressure)).toLocaleString(this.locale)
-          : '---'
-      : '---';
+        ? this.hass.states[entity].state
+        : this.hass.states[entity].attributes.pressure
+      : undefined;
+    return entity?.match('^weather.') === null
+      ? formatFiniteNumber(value, this.locale, places)
+      : formatFiniteNumber(value, this.locale, 0, 3);
   }
 
   get currentVisibility(): string {
     const entity = this._config.entity_visibility;
-    return entity && this.hass.states[entity]
+    const value = entity && this.hass.states[entity]
       ? entity.match('^weather.') === null
-        ? (Number(this.hass.states[entity].state)).toLocaleString(this.locale)
-        : this.hass.states[entity].attributes.visibility !== undefined
-          ? (Number(this.hass.states[entity].attributes.visibility)).toLocaleString(this.locale)
-          : '---'
-      : '---';
+        ? this.hass.states[entity].state
+        : this.hass.states[entity].attributes.visibility
+      : undefined;
+    return formatFiniteNumber(value, this.locale, 0, 3);
   }
 
   get currentWindBearing(): string {
@@ -2005,67 +2173,54 @@ export class PlatinumWeatherCard extends LitElement {
 
   get currentWindSpeed(): string {
     const entity = this._config.entity_wind_speed;
-    return entity && this.hass.states[entity]
+    const value = entity && this.hass.states[entity]
       ? entity.match('^weather.') === null
-        ? Math.round(Number(this.hass.states[entity].state)).toLocaleString(this.locale)
-        : this.hass.states[entity].attributes.wind_speed !== undefined
-          ? Math.round(Number(this.hass.states[entity].attributes.wind_speed)).toLocaleString(this.locale)
-          : '---'
-      : '---';
+        ? this.hass.states[entity].state
+        : this.hass.states[entity].attributes.wind_speed
+      : undefined;
+    return formatFiniteNumber(value, this.locale);
   }
 
   get currentWindGust(): string {
     const entity = this._config.entity_wind_gust;
-    return entity && this.hass.states[entity]
-      ? Math.round(Number(this.hass.states[entity].state)).toLocaleString(this.locale) : '---';
+    return formatFiniteNumber(entity && this.hass.states[entity]?.state, this.locale);
   }
 
   get currentWindSpeedKt(): string {
     const entity = this._config.entity_wind_speed_kt;
-    return entity && this.hass.states[entity]
+    const value = entity && this.hass.states[entity]
       ? entity.match('^weather.') === null
-        ? Math.round(Number(this.hass.states[entity].state)).toLocaleString(this.locale)
-        : this.hass.states[entity].attributes.wind_speed !== undefined
-          ? Math.round(Number(this.hass.states[entity].attributes.wind_speed)).toLocaleString(this.locale)
-          : '---'
-      : '---';
+        ? this.hass.states[entity].state
+        : this.hass.states[entity].attributes.wind_speed
+      : undefined;
+    return formatFiniteNumber(value, this.locale);
   }
 
   get currentWindGustKt(): string {
     const entity = this._config.entity_wind_gust_kt;
-    return entity && this.hass.states[entity]
-      ? Math.round(Number(this.hass.states[entity].state)).toLocaleString(this.locale) : '---';
+    return formatFiniteNumber(entity && this.hass.states[entity]?.state, this.locale);
   }
 
   // windDirections - returns set of possible wind directions by specified language
-  get windDirections(): string[] {
-    const windDirections_en = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'];
-    const windDirections_fr = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO', 'N'];
-    const windDirections_de = ['N', 'NNO', 'NO', 'ONO', 'O', 'OSO', 'SO', 'SSO', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'];
-    const windDirections_nl = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW', 'N'];
-    const windDirections_he = ['צפון', 'צ-צ-מז', 'צפון מזרח', 'מז-צ-מז', 'מזרח', 'מז-ד-מז', 'דרום מזרח', 'ד-ד-מז', 'דרום', 'ד-ד-מע', 'דרום מערב', 'מע-ד-מע', 'מערב', 'מע-צ-מע', 'צפון מערב', 'צ-צ-מע', 'צפון'];
-    const windDirections_da = ['N', 'NNØ', 'NØ', 'ØNØ', 'Ø', 'ØSØ', 'SØ', 'SSØ', 'S', 'SSV', 'SV', 'VSV', 'V', 'VNV', 'NV', 'NNV', 'N'];
-    const windDirections_ru = ['С', 'ССВ', 'СВ', 'ВСВ', 'В', 'ВЮВ', 'ЮВ', 'ЮЮВ', 'Ю', 'ЮЮЗ', 'ЮЗ', 'ЗЮЗ', 'З', 'ЗСЗ', 'СЗ', 'ССЗ', 'С'];
-    const windDirections_bg = ['С', 'ССИ', 'СИ', 'ИСИ', 'И', 'ИЮИ', 'ЮИ', 'ЮЮИ', 'Ю', 'ЮЮЗ', 'ЮЗ', 'ЗЮЗ', 'З', 'ЗСЗ', 'СЗ', 'ССЗ', 'С'];
-
+  get windDirections(): readonly string[] {
     switch (this.locale) {
       case "it":
       case "fr":
-        return windDirections_fr;
+        return WIND_DIRECTIONS.fr;
       case "de":
-        return windDirections_de;
+        return WIND_DIRECTIONS.de;
       case "nl":
-        return windDirections_nl;
+        return WIND_DIRECTIONS.nl;
       case "he":
-        return windDirections_he;
+        return WIND_DIRECTIONS.he;
       case "ru":
-        return windDirections_ru;
+        return WIND_DIRECTIONS.ru;
       case "da":
-        return windDirections_da;
+        return WIND_DIRECTIONS.da;
       case "bg":
-        return windDirections_bg;
+        return WIND_DIRECTIONS.bg;
       default:
-        return windDirections_en;
+        return WIND_DIRECTIONS.en;
     }
   }
 
@@ -2408,12 +2563,7 @@ export class PlatinumWeatherCard extends LitElement {
   }
 
   get locale(): string | undefined {
-    try {
-      Intl.NumberFormat(this._config.option_locale);
-      return this._config.option_locale;
-    } catch {
-      return undefined;
-    }
+    return this._locale;
   }
 
   get localeTextFeelsLike(): string {
@@ -2573,7 +2723,7 @@ export class PlatinumWeatherCard extends LitElement {
 
     switch (measure) {
       case 'air_pressure':
-        return this._config.entity_pressure !== undefined && this.hass.states[this._config.entity_pressure].attributes.unit_of_measurement !== undefined ?
+        return this._config.entity_pressure !== undefined && this.hass.states[this._config.entity_pressure]?.attributes.unit_of_measurement !== undefined ?
           this.hass.states[this._config.entity_pressure].attributes.unit_of_measurement as string :
           lengthUnit === 'km' ?
             'hPa' :
@@ -2624,8 +2774,8 @@ export class PlatinumWeatherCard extends LitElement {
   private _buildStyles(): CSSResult {
     // Get config flags or set defaults if not configured
     const tooltipVisible = this._config.option_tooltips ? "visible" : "hidden";
-    const tempFontWeight = this._config.temp_font_weight || "300";
-    const tempFontSize = this._config.temp_font_size || "4em";
+    const tempFontWeight = safeCssValue('font-weight', this._config.temp_font_weight, '300');
+    const tempFontSize = safeCssValue('font-size', this._config.temp_font_size, '4em');
     // Accent treatment for the flank high/low temperatures
     var flankMaxAccent = '';
     var flankMinAccent = '';
@@ -2643,8 +2793,8 @@ export class PlatinumWeatherCard extends LitElement {
         flankMaxAccent = 'color: #e89a90;';
         flankMinAccent = 'color: #7fb2e8;';
     }
-    const forecastTextFontSize = this._config.forecast_text_font_size || "21px";
-    const forecastTextAlignment = this._config.forecast_text_alignment || "center";
+    const forecastTextFontSize = safeCssValue('font-size', this._config.forecast_text_font_size, '21px');
+    const forecastTextAlignment = safeCssValue('text-align', this._config.forecast_text_alignment, 'center');
 
     return css`
       .card {
@@ -2662,6 +2812,28 @@ export class PlatinumWeatherCard extends LitElement {
         border: 1px solid transparent;
         padding-top: 8px;
         padding-bottom: 8px;
+      }
+      .clock-section {
+        display: flex;
+        box-sizing: border-box;
+        width: 100%;
+      }
+      .clock-left {
+        justify-content: flex-start;
+      }
+      .clock-center {
+        justify-content: center;
+        text-align: center;
+      }
+      .clock-right {
+        justify-content: flex-end;
+        text-align: right;
+      }
+      .clock-modern {
+        margin: 3px 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(var(--rgb-primary-text-color, 128, 128, 128), 0.05);
       }
       .updated {
         font-size: 0.9em;

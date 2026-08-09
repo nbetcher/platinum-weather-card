@@ -2,16 +2,12 @@
 import { LitElement, html, TemplateResult, css, CSSResultGroup } from 'lit';
 import { HomeAssistant, LovelaceCardEditor } from './ha-types.js';
 import { fireEvent } from './ha-helpers.js';
+import { normalizeWeatherCardConfig } from './config.js';
 
 import { mdiPencil, mdiArrowDown, mdiArrowUp, mdiApplicationEditOutline } from '@mdi/js';
 
-//import { ScopedRegistryHost } from '@lit-labs/scoped-registry-mixin';
-import { WeatherCardConfig, layoutOverview, layoutOrientation, layoutDays, extendedDays, sectionType, timeFormat, sectionNames, pressureDecimals, HassCustomElement, weatherCardConfigKeys } from './types';
+import { WeatherCardConfig, layoutOverview, layoutOrientation, layoutDays, extendedDays, sectionType, timeFormat, pressureDecimals, HassCustomElement, clockAlignment, clockDateFormat } from './types';
 import { customElement, property, state } from 'lit/decorators.js';
-import { formfieldDefinition } from '../elements/formfield';
-import { selectDefinition } from '../elements/select';
-import { switchDefinition } from '../elements/switch';
-import { textfieldDefinition } from '../elements/textfield';
 
 @customElement('platinum-weather-card-editor')
 export class WeatherCardEditor extends LitElement implements LovelaceCardEditor {
@@ -20,188 +16,28 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
   @state() private _config?: WeatherCardConfig;
 
   @state() private _helpers?: any;
+  private _helpersLoading?: Promise<void>;
 
   @state() private _subElementEditor: string | undefined = undefined;
 
-  private _initialized = false;
-  private _config_version = 8;
-
-  static elementDefinitions = {
-    "ha-card": customElements.get("ha-card"),  // This works because ha-card is ALWAYS loaded before custom cards (for now)
-    ...textfieldDefinition,
-    ...selectDefinition,
-    ...switchDefinition,
-    ...formfieldDefinition,
-  };
-
   public setConfig(config: WeatherCardConfig): void {
-    this._config = config;
-    let changed = false;
-    if (this._section_order === null) {
-      this._config = {
-        ...this._config,
-        ['section_order']: sectionNames,
-      }
-      changed = true;
-    } else {
-      // check for extra entries
-      this._config.section_order.forEach((section: sectionType) => {
-        if (!(sectionNames.includes(section))) {
-          const idx = this._config?.section_order.indexOf(section);
-          if (idx !== undefined && idx !== -1) {
-            this._config?.section_order.splice(idx, 1);
-          }
-          changed = true;
-        }
-      });
-      // check for missing entries
-      sectionNames.forEach((section: sectionType) => {
-        if (this._config && !(this._config.section_order.includes(section))) {
-          this._config.section_order.push(section);
-          changed = true;
-        }
-      });
-    }
+    const normalizedConfig = normalizeWeatherCardConfig(config);
+    const changed = JSON.stringify(this.sortObjectByKeys(config)) !==
+      JSON.stringify(this.sortObjectByKeys(normalizedConfig));
+
+    this._config = normalizedConfig;
 
     if (changed) {
       fireEvent(this, 'config-changed', { config: this.sortObjectByKeys(this._config) });
     }
 
-    this.loadCardHelpers();
+    if (!this._helpers) {
+      void this.loadCardHelpers();
+    }
   }
 
-  private sortObjectByKeys(object: { [x: string]: any; }) {
-    return Object.keys(object).sort().reduce((r, k) => (r[k] = object[k], r), {});
-  }
-
-  private _configCleanup() {
-    if (!this._config || !this.hass) {
-      return;
-    }
-
-    let tmpConfig = { ...this._config };
-
-    // Rename options
-    if (tmpConfig.static_icons) {
-      tmpConfig['option_static_icons'] = tmpConfig.static_icons;
-      delete tmpConfig['static_icons'];
-    }
-
-    if (tmpConfig.time_format) {
-      tmpConfig['option_time_format'] = tmpConfig.time_format === '12' ? '12hour' : '24hour';
-      delete tmpConfig['time_format'];
-    }
-
-    if (tmpConfig.locale) {
-      tmpConfig['option_locale'] = tmpConfig.locale;
-      delete tmpConfig['locale'];
-    }
-
-    if (tmpConfig.option_today_temperature_decimals) {
-      tmpConfig['option_today_temperature_decimals'] = tmpConfig.show_today_decimals;
-      delete tmpConfig['show_today_decimals'];
-    }
-
-    if (tmpConfig.show_decimals_pressure) {
-      tmpConfig['option_pressure_decimals'] = tmpConfig.show_decimals_pressure;
-      delete tmpConfig['show_decimals_pressure'];
-    }
-
-    if (tmpConfig.tooltips) {
-      tmpConfig['option_tooltips'] = tmpConfig.tooltips;
-      delete tmpConfig['tooltips'];
-    }
-
-    if (tmpConfig.show_beaufort) {
-      tmpConfig['option_show_beaufort'] = tmpConfig.show_beaufort;
-      delete tmpConfig['show_beaufort'];
-    }
-
-    if (tmpConfig.entity_daytime_high) {
-      tmpConfig['entity_forecast_max'] = tmpConfig.entity_daytime_high;
-      delete tmpConfig['entity_daytime_high'];
-    }
-
-    if (tmpConfig.entity_daytime_low) {
-      tmpConfig['entity_forecast_min'] = tmpConfig.entity_daytime_low;
-      delete tmpConfig['entity_daytime_low'];
-    }
-
-    if (tmpConfig.entity_current_conditions) {
-      tmpConfig['entity_forecast_icon'] = tmpConfig.entity_current_conditions;
-      delete tmpConfig['entity_current_conditions'];
-    }
-
-    if (tmpConfig.entity_current_text) {
-      tmpConfig['entity_summary'] = tmpConfig.entity_current_text;
-      delete tmpConfig['entity_current_text'];
-    }
-
-    if (tmpConfig.entity_daily_summary) {
-      tmpConfig['entity_extended'] = tmpConfig.entity_daily_summary;
-      delete tmpConfig['entity_daily_summary'];
-    }
-
-    if (tmpConfig.entity_forecast_high_temp_1) {
-      tmpConfig['entity_forecast_max_1'] = tmpConfig.entity_forecast_high_temp_1;
-      delete tmpConfig['entity_forecast_high_temp_1'];
-    }
-
-    if (tmpConfig.entity_forecast_low_temp_1) {
-      tmpConfig['entity_forecast_min_1'] = tmpConfig.entity_forecast_low_temp_1;
-      delete tmpConfig['entity_forecast_low_temp_1'];
-    }
-
-    if (tmpConfig.entity_possible_today) {
-      tmpConfig['entity_pos'] = tmpConfig.entity_possible_today;
-      delete tmpConfig['entity_possible_today'];
-    }
-
-    if (tmpConfig.entity_fire_danger_summary) {
-      tmpConfig['entity_fire_danger'] = tmpConfig.entity_fire_danger_summary;
-      delete tmpConfig['entity_fire_danger_summary'];
-    }
-
-    if (tmpConfig.show_decimals) {
-      tmpConfig['option_show_overview_decimals'] = tmpConfig.show_decimals;
-      delete tmpConfig['show_decimals'];
-    }
-
-    if (tmpConfig.show_separator) {
-      tmpConfig['option_show_overview_separator'] = tmpConfig.show_separator;
-      delete tmpConfig['show_separator'];
-    }
-
-    // Remane slot entries
-    for (const slot of ['slot_l1', 'slot_l2', 'slot_l3', 'slot_l4', 'slot_l5', 'slot_l6', 'slot_l7', 'slot_l8', 'slot_r1', 'slot_r2', 'slot_r3', 'slot_r4', 'slot_r5', 'slot_r6', 'slot_r7', 'slot_r8']) {
-      if (tmpConfig[slot] === 'daytime_high') tmpConfig[slot] = 'forecast_max';
-      if (tmpConfig[slot] === 'daytime_low') tmpConfig[slot] = 'forecast_min';
-    }
-
-    // Remove unused entries
-    const keysOfProps = weatherCardConfigKeys;
-    for (const element in this._config) {
-      if (!keysOfProps.includes(element)) {
-        delete tmpConfig[element];
-      }
-    }
-
-    tmpConfig = {
-      ...tmpConfig,
-      card_config_version: this._config_version,
-    }
-
-    this._config = tmpConfig;
-
-    fireEvent(this, 'config-changed', { config: this.sortObjectByKeys(this._config) });
-  }
-
-  protected shouldUpdate(): boolean {
-    if (!this._initialized) {
-      this._initialize();
-    }
-
-    return true;
+  private sortObjectByKeys(object: Record<string, any>): Record<string, any> {
+    return Object.fromEntries(Object.entries(object).sort(([left], [right]) => left.localeCompare(right)));
   }
 
   get _section_order(): sectionType[] | null {
@@ -588,6 +424,22 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     return this._config?.option_locale || '';
   }
 
+  get _clock_time_format(): timeFormat | null {
+    return this._config?.clock_time_format ?? null;
+  }
+
+  get _clock_date_format(): clockDateFormat {
+    return this._config?.clock_date_format ?? 'DOW, Mon ##';
+  }
+
+  get _clock_show_seconds(): boolean {
+    return this._config?.clock_show_seconds === true;
+  }
+
+  get _clock_alignment(): clockAlignment {
+    return this._config?.clock_alignment ?? 'right';
+  }
+
   get _optional_entities(): TemplateResult {
     const entities = new Set();
     for (const slot of
@@ -938,24 +790,74 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
       ${entity_custom4}`;
   }
 
-  get _show_warning(): boolean {
-    return this._config?.show_warning || false;
-  }
-
-  get _show_error(): boolean {
-    return this._config?.show_error || false;
-  }
-
-  protected async firstUpdated(): Promise<void> {
-    if (this._config && this.hass) {
-      if (this._config.card_config_version !== this._config_version) {
-        this._configCleanup();
-      }
-    }
-
+  protected firstUpdated(): void {
     if (!customElements.get('ha-switch') || !customElements.get('ha-textfield') || !customElements.get('ha-entity-picker')) {
       (customElements.get('hui-entities-card') as HassCustomElement)?.getConfigElement();
     }
+  }
+
+  private _sectionClockEditor(): TemplateResult {
+    return html`
+      <div class="editor-note">
+        The clock resynchronizes to wall time after delayed or suspended ticks.
+        Seconds appear as a compact progress dial above the AM/PM indicator.
+      </div>
+      <div class="side-by-side">
+        <ha-select
+          label="Clock Time Format"
+          .configValue=${'clock_time_format'}
+          .value=${this._clock_time_format}
+          @closed=${(ev: { stopPropagation: () => void }) => ev.stopPropagation()}
+          @selected=${this._valueChanged}
+        >
+          <mwc-list-item value="">Use Global Time Format</mwc-list-item>
+          <mwc-list-item value="system">System</mwc-list-item>
+          <mwc-list-item value="12hour">12 hour</mwc-list-item>
+          <mwc-list-item value="24hour">24 hour</mwc-list-item>
+        </ha-select>
+        <ha-select
+          label="Date Format"
+          .configValue=${'clock_date_format'}
+          .value=${this._clock_date_format}
+          @closed=${(ev: { stopPropagation: () => void }) => ev.stopPropagation()}
+          @selected=${this._valueChanged}
+        >
+          <mwc-list-item value="none">No date</mwc-list-item>
+          <mwc-list-item value="system">System locale</mwc-list-item>
+          <mwc-list-item value="MM/dd/yyyy">MM/dd/yyyy</mwc-list-item>
+          <mwc-list-item value="MM/dd/yy">MM/dd/yy</mwc-list-item>
+          <mwc-list-item value="dd/MM/yyyy">dd/MM/yyyy</mwc-list-item>
+          <mwc-list-item value="dd/MM/yy">dd/MM/yy</mwc-list-item>
+          <mwc-list-item value="yyyy-MM-dd">yyyy-MM-dd</mwc-list-item>
+          <mwc-list-item value="DOW, Mon ##">Sat, Aug 8</mwc-list-item>
+          <mwc-list-item value="DOW, Month ##">Sat, August 8</mwc-list-item>
+          <mwc-list-item value="DOW, ## Mon">Sat, 8 Aug</mwc-list-item>
+          <mwc-list-item value="Mon ##, yyyy">Aug 8, 2026</mwc-list-item>
+          <mwc-list-item value="Month ##, yyyy">August 8, 2026</mwc-list-item>
+          <mwc-list-item value="## Mon yyyy">8 Aug 2026</mwc-list-item>
+        </ha-select>
+      </div>
+      <div class="side-by-side">
+        <ha-select
+          label="Alignment"
+          .configValue=${'clock_alignment'}
+          .value=${this._clock_alignment}
+          @closed=${(ev: { stopPropagation: () => void }) => ev.stopPropagation()}
+          @selected=${this._valueChanged}
+        >
+          <mwc-list-item value="left">Left</mwc-list-item>
+          <mwc-list-item value="center">Center</mwc-list-item>
+          <mwc-list-item value="right">Right</mwc-list-item>
+        </ha-select>
+        <ha-formfield .label=${'Show Seconds'}>
+          <ha-switch
+            .checked=${this._clock_show_seconds}
+            .configValue=${'clock_show_seconds'}
+            @change=${this._valueChanged}
+          ></ha-switch>
+        </ha-formfield>
+      </div>
+    `;
   }
 
   private _sectionOverviewEditor(): TemplateResult {
@@ -1432,6 +1334,9 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
       `,
     ];
     switch (this._subElementEditor) {
+      case 'section_clock':
+        subel.push(this._sectionClockEditor());
+        break;
       case 'section_overview':
         subel.push(this._sectionOverviewEditor());
         break;
@@ -1464,6 +1369,10 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     this._subElementEditor = undefined;
   }
 
+  get _show_section_clock(): boolean {
+    return this._config?.show_section_clock === true; // default off
+  }
+
   get _show_section_overview(): boolean {
     return this._config?.show_section_overview !== false; //default on
   }
@@ -1482,6 +1391,27 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
 
   private getConfigBlock(block: string, first: boolean, last: boolean): TemplateResult {
     switch (block) {
+      case 'clock':
+        return html`
+          <div class="section-flex edit-clock-section">
+            <ha-formfield .label=${`Clock Section`}>
+              <ha-switch
+                .checked=${this._show_section_clock}
+                .configValue=${'show_section_clock'}
+                @change=${this._valueChanged}
+              ></ha-switch>
+            </ha-formfield>
+            <div>
+              <ha-icon-button class="down-icon" .value=${'clock'} .path=${mdiArrowDown} .disabled=${last} @click=${this._moveDown}>
+              </ha-icon-button>
+              <ha-icon-button class="up-icon" .value=${'clock'} .path=${mdiArrowUp} .disabled=${first} @click=${this._moveUp}>
+              </ha-icon-button>
+              <ha-icon-button class="edit-icon" .value=${'section_clock'} .path=${mdiPencil} @click=${this._editSubmenu}>
+              </ha-icon-button>
+              <div class="no-icon"></div>
+            </div>
+          </div>
+        `;
       case 'overview':
         return html`
           <div class="section-flex edit-overview-section">
@@ -1591,15 +1521,18 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     return html`${htmlConfig}`;
   }
 
-  private _initialize(): void {
-    if (this.hass === undefined) return;
-    if (this._config === undefined) return;
-    if (this._helpers === undefined) return;
-    this._initialized = true;
-  }
-
-  private async loadCardHelpers(): Promise<void> {
-    this._helpers = await (window as any).loadCardHelpers();
+  private loadCardHelpers(): Promise<void> {
+    if (!this._helpersLoading) {
+      this._helpersLoading = (window as any).loadCardHelpers()
+        .then((helpers: any) => {
+          this._helpers = helpers;
+        })
+        .catch((error: unknown) => {
+          this._helpersLoading = undefined;
+          throw error;
+        });
+    }
+    return this._helpersLoading!;
   }
 
   private _valueChangedPicker(ev): void {
@@ -1710,7 +1643,9 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
     }
     if (target.configValue) {
       if (target.value === '' || target.value === null) {
-        delete this._config[target.configValue];
+        const tmpConfig = { ...this._config };
+        delete tmpConfig[target.configValue];
+        this._config = tmpConfig;
       } else {
         this._config = {
           ...this._config,
@@ -1744,28 +1679,12 @@ export class WeatherCardEditor extends LitElement implements LovelaceCardEditor 
       display: inline-flex;
       width: var(--mds-icon-button-size, 48px);
     }
-    /* .option {
-      cursor: pointer;
-    } */
-    /* .row {
-      display: flex;
-      margin-bottom: -14px;
-      pointer-events: none;
-    } */
-    /* .title {
-      padding-left: 16px;
-      margin-top: -6px;
-      pointer-events: none;
-    } */
-    /* .secondary {
-      padding-left: 40px;
+    .editor-note {
+      margin: 2px 0 8px;
       color: var(--secondary-text-color);
-      pointer-events: none;
-    } */
-    /* .values {
-      padding-left: 16px;
-      background: var(--secondary-background-color);
-    } */
+      font-size: 0.9em;
+      line-height: 1.35;
+    }
     .section-flex {
       display: flex;
       justify-content: space-between;

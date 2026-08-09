@@ -11,22 +11,15 @@
     "lovelace",
     "custom-cards"
   ],
-  "module": "platinum-weather-card.js",
+  "module": "dist/platinum-weather-card.js",
+  "files": [
+    "dist"
+  ],
   "repository": "git@github.com:nbetcher/platinum-weather-card.git",
   "author": "Simon <simon@makin-things.com>",
   "license": "MIT",
   "dependencies": {
-    "@lit-labs/scoped-registry-mixin": "^1.0.3",
-    "@material/mwc-formfield": "^0.27.0",
-    "@material/mwc-list": "^0.27.0",
-    "@material/mwc-menu": "^0.27.0",
-    "@material/mwc-notched-outline": "^0.27.0",
-    "@material/mwc-ripple": "^0.27.0",
-    "@material/mwc-select": "^0.27.0",
-    "@material/mwc-switch": "^0.27.0",
-    "@material/mwc-textfield": "^0.27.0",
     "@mdi/js": "^7.4.47",
-    "home-assistant-js-websocket": "^9.4.0",
     "lit": "^3.2.1"
   },
   "devDependencies": {
@@ -34,14 +27,13 @@
     "@babel/preset-env": "^7.26.0",
     "@eslint/js": "^9.18.0",
     "@rollup/plugin-babel": "^6.0.4",
-    "@rollup/plugin-commonjs": "^28.0.2",
-    "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.1.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "globals": "^15.14.0",
+    "home-assistant-js-websocket": "^9.4.0",
     "prettier": "^3.4.2",
     "rollup": "^4.31.0",
     "rollup-plugin-serve": "^3.0.0",
@@ -49,16 +41,15 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.21.0"
   },
-  "overrides": {
-    "lit": "^3.2.1",
-    "lit-html": "^3.2.1",
-    "lit-element": "^4.1.1",
-    "@lit/reactive-element": "^2.0.4"
-  },
   "scripts": {
+    "clean": "node scripts/clean-dist.mjs",
+    "prestart": "npm run clean",
     "start": "rollup -c rollup.config.dev.js --watch",
-    "build": "npm run lint && npm run rollup",
-    "lint": "eslint src/*.ts",
+    "build": "npm run lint && npm run typecheck && npm test && npm run clean && npm run rollup",
+    "prepack": "npm run build",
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
     "rollup": "rollup -c"
   }
 }

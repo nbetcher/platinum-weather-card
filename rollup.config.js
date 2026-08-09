@@ -1,58 +1,29 @@
 import typescript from '@rollup/plugin-typescript';
-import commonjs from '@rollup/plugin-commonjs';
 import nodeResolve from '@rollup/plugin-node-resolve';
 import babel from '@rollup/plugin-babel';
 import terser from '@rollup/plugin-terser';
-import serve from 'rollup-plugin-serve';
-import json from '@rollup/plugin-json';
-import ignore from './rollup-plugins/ignore.js';
-import { ignoreTextfieldFiles } from './elements/ignore/textfield.js';
-import { ignoreSelectFiles } from './elements/ignore/select.js';
-import { ignoreSwitchFiles } from './elements/ignore/switch.js';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-
-const dev = process.env.ROLLUP_WATCH;
-
-const serveopts = {
-  contentBase: ['./dist'],
-  host: '0.0.0.0',
-  port: 5000,
-  allowCrossOrigin: true,
-  headers: {
-    'Access-Control-Allow-Origin': '*',
-  },
-};
 
 const plugins = [
   nodeResolve({
     browser: true,
     preferBuiltins: false,
   }),
-  commonjs(),
   typescript({
     tsconfig: './tsconfig.json',
     sourceMap: false,
   }),
-  json(),
   babel({
     exclude: 'node_modules/**',
     babelHelpers: 'bundled',
-    presets: [
-      ['@babel/preset-env', { targets: { esmodules: true } }]
-    ],
+    presets: [['@babel/preset-env', { targets: { esmodules: true } }]],
   }),
-  dev && serve(serveopts),
-  !dev && terser({
+  terser({
     ecma: 2022,
     module: true,
     compress: {
       passes: 2,
       drop_console: true,
       drop_debugger: true,
-      pure_getters: true,
-      unsafe_methods: true,
     },
     mangle: {
       properties: false,
@@ -60,9 +31,6 @@ const plugins = [
     format: {
       comments: false,
     },
-  }),
-  ignore({
-    files: [...ignoreTextfieldFiles, ...ignoreSelectFiles, ...ignoreSwitchFiles].map((file) => require.resolve(file)),
   }),
 ];
 

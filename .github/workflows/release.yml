@@ -13,16 +13,32 @@ on:
 jobs:
   release:
     name: Prepare release
-    permissions: write-all
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        shell: bash
+        run: |
+          expected_version="${RELEASE_TAG#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          lock_version="$(node -p "require('./package-lock.json').version")"
+          runtime_version="$(node -e "const source=require('fs').readFileSync('src/const.ts','utf8'); const match=source.match(/CARD_VERSION = '([^']+)'/); if (!match) process.exit(1); process.stdout.write(match[1]);")"
+          test "$package_version" = "$expected_version"
+          test "$lock_version" = "$expected_version"
+          test "$runtime_version" = "$expected_version"
 
       # Build
       - name: Build the file
@@ -36,6 +52,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/*
-          tag: ${{ inputs.tag || github.ref }}
+          tag: ${{ inputs.tag || github.event.release.tag_name }}
           overwrite: true
           file_glob: true

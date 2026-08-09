@@ -10,21 +10,37 @@ export interface HassCustomElement extends CustomElementConstructor {
   getConfigElement(): Promise<unknown>;
 }
 
-export const sectionNames = ['overview', 'extended', 'slots', 'daily_forecast'];
-export type sectionType = typeof sectionNames[number];
+export const sectionNames = ['clock', 'overview', 'extended', 'slots', 'daily_forecast'] as const;
+export type sectionType = (typeof sectionNames)[number];
 
-export type layoutOverview = "complete" | "observations" | "forecast" | "title only";
-export type layoutOrientation = "horizontal" | "vertical";
+export type layoutOverview = 'complete' | 'observations' | 'forecast' | 'title only';
+export type layoutOrientation = 'horizontal' | 'vertical';
 export type layoutDays = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type extendedDays = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type pressureDecimals = 0 | 1 | 2 | 3;
 export type timeFormat = 'system' | '12hour' | '24hour';
+export type clockAlignment = 'left' | 'center' | 'right';
+export type clockDateFormat =
+  | 'none'
+  | 'system'
+  | 'MM/dd/yyyy'
+  | 'MM/dd/yy'
+  | 'dd/MM/yyyy'
+  | 'dd/MM/yy'
+  | 'yyyy-MM-dd'
+  | 'DOW, Mon ##'
+  | 'DOW, Month ##'
+  | 'DOW, ## Mon'
+  | 'Mon ##, yyyy'
+  | 'Month ##, yyyy'
+  | '## Mon yyyy';
 
 // TODO Add your configuration elements here for type-checking
 export interface WeatherCardConfig extends LovelaceCardConfig {
   type: string;
   card_config_version?: number;
-  section_order: sectionType[];
+  section_order?: sectionType[];
+  show_section_clock?: boolean;
   show_section_overview?: boolean;
   show_section_extended?: boolean;
   show_section_slots?: boolean;
@@ -142,129 +158,13 @@ export interface WeatherCardConfig extends LovelaceCardConfig {
   old_daily_format?: boolean;
   option_show_beaufort?: boolean;
 
+  clock_time_format?: timeFormat;
+  clock_date_format?: clockDateFormat;
+  clock_show_seconds?: boolean;
+  clock_alignment?: clockAlignment;
+
   entity?: string;
   tap_action?: ActionConfig;
   hold_action?: ActionConfig;
   style?: string;
 }
-
-// Valid keys for WeatherCardConfig - used to filter unknown config properties
-export const weatherCardConfigKeys: (keyof WeatherCardConfig)[] = [
-  'type',
-  'card_config_version',
-  'section_order',
-  'show_section_overview',
-  'show_section_extended',
-  'show_section_slots',
-  'show_section_daily_forecast',
-  'overview_layout',
-  'text_card_title',
-  'text_card_title_2',
-  'entity_update_time',
-  'update_time_use_attr',
-  'update_time_name_attr',
-  'text_update_time_prefix',
-  'entity_temperature',
-  'entity_apparent_temp',
-  'entity_forecast_icon',
-  'entity_summary',
-  'option_show_overview_decimals',
-  'option_show_overview_separator',
-  'entity_extended',
-  'extended_use_attr',
-  'extended_name_attr',
-  'slot_l1',
-  'slot_l2',
-  'slot_l3',
-  'slot_l4',
-  'slot_l5',
-  'slot_l6',
-  'slot_l7',
-  'slot_l8',
-  'slot_r1',
-  'slot_r2',
-  'slot_r3',
-  'slot_r4',
-  'slot_r5',
-  'slot_r6',
-  'slot_r7',
-  'slot_r8',
-  'entity_humidity',
-  'entity_pressure',
-  'entity_visibility',
-  'entity_wind_bearing',
-  'entity_wind_speed',
-  'entity_wind_gust',
-  'entity_wind_speed_kt',
-  'entity_wind_gust_kt',
-  'entity_temp_next',
-  'entity_temp_next_label',
-  'entity_temp_following',
-  'entity_temp_following_label',
-  'entity_forecast_max',
-  'entity_forecast_min',
-  'entity_observed_max',
-  'entity_observed_min',
-  'entity_fire_danger',
-  'entity_pop',
-  'entity_pos',
-  'entity_possible_tomorrow',
-  'entity_sun',
-  'entity_uv_alert_summary',
-  'entity_rainfall',
-  'entity_todays_fire_danger',
-  'entity_todays_uv_forecast',
-  'custom1_value',
-  'custom1_icon',
-  'custom1_units',
-  'custom2_value',
-  'custom2_icon',
-  'custom2_units',
-  'custom3_value',
-  'custom3_icon',
-  'custom3_units',
-  'custom4_value',
-  'custom4_icon',
-  'custom4_units',
-  'entity_forecast_icon_1',
-  'entity_pop_1',
-  'entity_pos_1',
-  'entity_summary_1',
-  'entity_forecast_min_1',
-  'entity_forecast_max_1',
-  'entity_extended_1',
-  'entity_fire_danger_1',
-  'daily_forecast_layout',
-  'daily_forecast_days',
-  'daily_extended_forecast_days',
-  'daily_extended_use_attr',
-  'daily_extended_name_attr',
-  'option_today_temperature_decimals',
-  'option_today_rainfall_decimals',
-  'option_pressure_decimals',
-  'option_color_fire_danger',
-  'option_daily_color_fire_danger',
-  'pressure_units',
-  'tempformat',
-  'use_old_column_format',
-  'temp_font_weight',
-  'temp_font_size',
-  'forecast_text_font_size',
-  'forecast_text_alignment',
-  'option_locale',
-  'option_static_icons',
-  'option_time_format',
-  'option_tooltips',
-  'old_daily_format',
-  'option_show_beaufort',
-  'option_apparent_temp_icon',
-  'option_overview_minmax',
-  'option_minmax_accent',
-  'option_modern_layout',
-  'forecast_type',
-  'entity',
-  'tap_action',
-  'hold_action',
-  'style',
-  'card_mod',
-];

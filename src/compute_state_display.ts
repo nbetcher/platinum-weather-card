@@ -1,4 +1,4 @@
-import { HassEntity } from 'home-assistant-js-websocket';
+import type { HassEntity } from 'home-assistant-js-websocket';
 import { LocalizeFunc, FrontendLocaleData } from './ha-types.js';
 import { formatDate, formatTime, formatDateTime } from './ha-helpers.js';
 
@@ -37,7 +37,7 @@ export const entityComputeStateDisplay = (
                 // don't use artificial 1970 year.
                 now.getFullYear(),
                 now.getMonth(),
-                now.getDay(),
+                now.getDate(),
                 stateObj.attributes.hour,
                 stateObj.attributes.minute,
             );

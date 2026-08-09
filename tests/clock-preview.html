@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Platinum Weather Clock Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --primary-text-color: #e8eaed;
+        --secondary-text-color: #9aa0a6;
+        --primary-color: #7fb2e8;
+        --divider-color: rgba(232, 234, 237, 0.2);
+        font:
+          16px Arial,
+          sans-serif;
+        background: #111418;
+      }
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+      }
+      .panel {
+        display: flex;
+        box-sizing: border-box;
+        width: 460px;
+        justify-content: flex-end;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(232, 234, 237, 0.05);
+        box-shadow: 0 5px 22px rgba(0, 0, 0, 0.28);
+      }
+      platinum-weather-card-editor {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <platinum-weather-clock id="clock"></platinum-weather-clock>
+    </div>
+    <output id="editor-status" hidden>pending</output>
+    <output id="touch-status" hidden>pending</output>
+    <script type="module">
+      window.loadCardHelpers = async () => ({});
+      await import('/platinum-weather-card.js');
+
+      await customElements.whenDefined('platinum-weather-clock');
+      Object.assign(document.querySelector('#clock'), {
+        timeFormat: '12hour',
+        dateFormat: 'DOW, Mon ##',
+        locale: 'en-US',
+        timeZone: 'America/Phoenix',
+        showSeconds: true,
+      });
+
+      const Card = customElements.get('platinum-weather-card');
+      const editor = await Card.getConfigElement();
+      editor.hass = { states: {} };
+      editor.setConfig({ type: 'custom:platinum-weather-card' });
+      document.body.append(editor);
+      await editor.updateComplete;
+      if (!editor.shadowRoot?.querySelector('ha-switch')) {
+        throw new Error('Editor did not render');
+      }
+      document.querySelector('#editor-status').textContent = 'loaded';
+
+      const weatherCard = document.createElement('platinum-weather-card');
+      weatherCard.hass = {
+        states: {},
+        locale: { language: 'en', time_format: '24', time_zone: 'local' },
+        config: { unit_system: {}, time_zone: 'UTC' },
+        language: 'en',
+        localize: () => '',
+        connected: true,
+        connection: { subscribeMessage: async () => () => {} },
+        callService: () => {},
+      };
+      weatherCard.setConfig({
+        type: 'custom:platinum-weather-card',
+        section_order: [],
+      });
+      document.body.append(weatherCard);
+      await weatherCard.updateComplete;
+
+      let touchActions = 0;
+      weatherCard.addEventListener('action', (event) => {
+        if (event.detail?.action === 'tap') touchActions += 1;
+      });
+      const cardSurface = weatherCard.shadowRoot.querySelector('ha-card');
+      cardSurface.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }));
+      cardSurface.dispatchEvent(new Event('touchend', { bubbles: true, cancelable: true }));
+      if (touchActions !== 1) {
+        throw new Error(`Expected one touch tap action, received ${touchActions}`);
+      }
+      document.querySelector('#touch-status').textContent = 'loaded';
+    </script>
+  </body>
+</html>

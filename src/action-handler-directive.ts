@@ -4,7 +4,8 @@ import { AttributePart, directive, Directive, DirectiveParameters } from 'lit/di
 import { ActionHandlerDetail, ActionHandlerOptions } from './ha-types.js';
 import { fireEvent } from './ha-helpers.js';
 
-const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0 || navigator.maxTouchPoints > 0;
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const ACTION_HANDLER_TAG = 'action-handler-platinum-weather-card';
 
 interface ActionHandler extends HTMLElement {
   holdTime: number;
@@ -12,6 +13,7 @@ interface ActionHandler extends HTMLElement {
 }
 interface ActionHandlerElement extends HTMLElement {
   actionHandler?: boolean;
+  actionHandlerOptions?: ActionHandlerOptions;
 }
 
 declare global {
@@ -23,12 +25,13 @@ declare global {
 class ActionHandler extends HTMLElement implements ActionHandler {
   public holdTime = 500;
 
-   
   public ripple: any;
 
   protected timer?: number;
 
   protected held = false;
+
+  protected interactionActive = false;
 
   private dblClickTimeout?: number;
 
@@ -57,6 +60,7 @@ class ActionHandler extends HTMLElement implements ActionHandler {
           clearTimeout(this.timer);
           this.stopAnimation();
           this.timer = undefined;
+          this.interactionActive = false;
         },
         { passive: true },
       );
@@ -64,6 +68,9 @@ class ActionHandler extends HTMLElement implements ActionHandler {
   }
 
   public bind(element: ActionHandlerElement, options): void {
+    // Lit calls the directive again when options change. Event listeners are
+    // installed once, while handlers read this latest options object.
+    element.actionHandlerOptions = options ?? {};
     if (element.actionHandler) {
       return;
     }
@@ -84,6 +91,7 @@ class ActionHandler extends HTMLElement implements ActionHandler {
 
     const start = (ev: Event): void => {
       this.held = false;
+      this.interactionActive = true;
       let x;
       let y;
       if ((ev as TouchEvent).touches) {
@@ -94,24 +102,34 @@ class ActionHandler extends HTMLElement implements ActionHandler {
         y = (ev as MouseEvent).pageY;
       }
 
-      this.timer = window.setTimeout(() => {
-        this.startAnimation(x, y);
-        this.held = true;
-      }, this.holdTime);
+      if (element.actionHandlerOptions?.hasHold) {
+        this.timer = window.setTimeout(() => {
+          this.startAnimation(x, y);
+          this.held = true;
+        }, this.holdTime);
+      }
     };
 
     const end = (ev: Event): void => {
       // Prevent mouse event if touch event
       ev.preventDefault();
-      if (['touchend', 'touchcancel'].includes(ev.type) && this.timer === undefined) {
+      if (ev.type === 'touchcancel') {
+        clearTimeout(this.timer);
+        this.stopAnimation();
+        this.timer = undefined;
+        this.interactionActive = false;
+        return;
+      }
+      if (ev.type === 'touchend' && !this.interactionActive) {
         return;
       }
       clearTimeout(this.timer);
       this.stopAnimation();
       this.timer = undefined;
+      this.interactionActive = false;
       if (this.held) {
         fireEvent(element, 'action', { action: 'hold' });
-      } else if (options.hasDoubleClick) {
+      } else if (element.actionHandlerOptions?.hasDoubleClick) {
         if ((ev.type === 'click' && (ev as MouseEvent).detail < 2) || !this.dblClickTimeout) {
           this.dblClickTimeout = window.setTimeout(() => {
             this.dblClickTimeout = undefined;
@@ -162,16 +180,17 @@ class ActionHandler extends HTMLElement implements ActionHandler {
   }
 }
 
-// TODO You need to replace all instances of "action-handler-weather" with "action-handler-<your card name>"
-customElements.define('action-handler-weather', ActionHandler);
+if (!customElements.get(ACTION_HANDLER_TAG)) {
+  customElements.define(ACTION_HANDLER_TAG, ActionHandler);
+}
 
 const getActionHandler = (): ActionHandler => {
   const body = document.body;
-  if (body.querySelector('action-handler-weather')) {
-    return body.querySelector('action-handler-weather') as ActionHandler;
+  if (body.querySelector(ACTION_HANDLER_TAG)) {
+    return body.querySelector(ACTION_HANDLER_TAG) as ActionHandler;
   }
 
-  const actionhandler = document.createElement('action-handler-weather');
+  const actionhandler = document.createElement(ACTION_HANDLER_TAG);
   body.appendChild(actionhandler);
 
   return actionhandler as ActionHandler;
@@ -192,7 +211,6 @@ export const actionHandler = directive(
       return noChange;
     }
 
-     
-    render(_options?: ActionHandlerOptions) { }
+    render(_options?: ActionHandlerOptions) {}
   },
 );
